@@ -99,7 +99,7 @@ export class Villager {
 
         mapBones(model);
         
-        if (gltf.animations.length) {
+        model.traverse((c) => {
           if (c.isMesh) {
             c.castShadow = true; c.receiveShadow = true;
             if (c.material) {
