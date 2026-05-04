@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>دنیای آرش — شبیه‌سازی هوش مصنوعی</title>
+  <meta name="description" content="یک دنیای مجازی سه‌بعدی با یک مرد روستایی که توسط Gemini AI زندگی می‌کند." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Three.js Import Map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loader-content">
+      <div class="loader-spinner"></div>
+      <h2>در حال بارگذاری دنیا...</h2>
+      <p id="loading-msg">اتصال به سرور...</p>
+    </div>
+  </div>
+
+  <!-- Three.js Canvas -->
+  <canvas id="world-canvas"></canvas>
+
+  <!-- HUD Overlay -->
+  <div id="hud">
+    <!-- Top Bar -->
+    <div id="hud-top">
+      <div id="clock-widget">
+        <span id="world-icon">☀️</span>
+        <span id="world-time">06:00</span>
+        <span id="weather-badge">sunny</span>
+      </div>
+      <div id="title-widget">
+        <span class="title-main">دنیای آرش</span>
+        <span class="title-sub">Powered by Gemini AI</span>
+      </div>
+      <button id="view-toggle" class="glass-panel">🏠 نمای داخل</button>
+    </div>
+
+    <!-- Character Status Panel -->
+    <div id="status-panel">
+      <div class="panel-header">
+        <div class="avatar-icon">🧑‍🌾</div>
+        <div class="char-info">
+          <div class="char-name">آرش</div>
+          <div id="char-mood">😊 content</div>
+        </div>
+      </div>
+
+      <div class="stat-row">
+        <span class="stat-label">⚡ انرژی</span>
+        <div class="stat-bar-wrap">
+          <div class="stat-bar energy-bar" id="energy-bar"></div>
+        </div>
+        <span class="stat-val" id="energy-val">80</span>
+      </div>
+
+      <div class="stat-row">
+        <span class="stat-label">🍞 گرسنگی</span>
+        <div class="stat-bar-wrap">
+          <div class="stat-bar hunger-bar" id="hunger-bar"></div>
+        </div>
+        <span class="stat-val" id="hunger-val">20</span>
+      </div>
+
+      <div id="action-display">
+        <span id="action-icon">💤</span>
+        <span id="action-text">در حال استراحت...</span>
+      </div>
+
+      <div id="thought-bubble" class="hidden">
+        <span class="thought-quote">💭</span>
+        <span id="thought-text"></span>
+      </div>
+    </div>
+
+    <!-- Memory Log -->
+    <div id="memory-panel">
+      <div class="panel-title">📜 خاطرات اخیر</div>
+      <ul id="memory-list"></ul>
+    </div>
+
+    <!-- Connection Status -->
+    <div id="conn-status" class="conn-dot offline">⚡ در حال اتصال...</div>
+  </div>
+
+  <!-- Main App -->
+  <script type="module" src="main.js"></script>
+</body>
+</html>
