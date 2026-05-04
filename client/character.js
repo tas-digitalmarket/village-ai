@@ -113,13 +113,23 @@ export class Villager {
           }
         });
 
-        if (gltf.animations.length) {
-          this.mixer = new THREE.AnimationMixer(model);
-          gltf.animations.forEach((clip) => {
-            this.clips[clip.name.toLowerCase()] = this.mixer.clipAction(clip);
-          });
-          this._playGLTF('idle');
-        }
+        // Collect all bone names for debug
+        const boneNames = [];
+        model.traverse(c => { if (c.isBone) boneNames.push(c.name); });
+        console.log('[Villager] ALL BONES:', boneNames.join(', '));
+        
+        // Show bones on screen for debugging
+        const dbg = document.createElement('div');
+        dbg.id = 'bone-debug';
+        dbg.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#f5c842;padding:8px 16px;border-radius:8px;font-size:11px;z-index:9999;max-width:600px;word-break:break-all;pointer-events:none;';
+        dbg.innerText = 'Bones: ' + boneNames.join(', ');
+        document.body.appendChild(dbg);
+        setTimeout(() => dbg.remove(), 10000);
+
+        // DISABLED: Do NOT play any GLTF animations — they lock bones in T-pose
+        // We use 100% procedural animation only
+        this.mixer = null;
+        this.useProcedural = true;
         console.log('[Villager] Loaded & Mapped bones:', PUBLIC_MODELS[idx]);
       },
       undefined,
@@ -236,20 +246,28 @@ export class Villager {
     const t = this.animTime;
     const p = this.parts;
 
-    // Nuclear T-Pose Fix: Rotate ANY bone that could be an arm
+    // BRUTE-FORCE T-Pose Fix: Scan EVERY bone and force arms down
     if (this.isGLTF) {
       this.root.traverse(b => {
-        if (b.isBone) {
-          const n = b.name.toLowerCase();
-          if (n.includes('arm') && !n.includes('fore') && !n.includes('hand')) {
-             if (n.includes('l')) b.rotation.z = 1.3;
-             if (n.includes('r')) b.rotation.z = -1.3;
+        if (!b.isBone) return;
+        const n = b.name.toLowerCase();
+        // Match anything that looks like an upper arm (but not forearm/hand/finger)
+        const isUpperArm = (n.includes('arm') || n.includes('shoulder') || n.includes('clavicle'))
+          && !n.includes('fore') && !n.includes('hand') && !n.includes('finger') && !n.includes('wrist');
+        if (isUpperArm) {
+          // Detect side by name or world position
+          const worldPos = new THREE.Vector3();
+          b.getWorldPosition(worldPos);
+          if (n.includes('left') || n.includes('_l') || n.includes('.l') || worldPos.x > 0.05) {
+            b.rotation.z = 1.4;
+          } else if (n.includes('right') || n.includes('_r') || n.includes('.r') || worldPos.x < -0.05) {
+            b.rotation.z = -1.4;
           }
         }
       });
-      // Specific mapping for identified parts
-      if (p.lUpperArm) { p.lUpperArm.rotation.z = 1.3; p.lUpperArm.rotation.x = 0.2; }
-      if (p.rUpperArm) { p.rUpperArm.rotation.z = -1.3; p.rUpperArm.rotation.x = 0.2; }
+      // Also apply to our mapped parts
+      if (p.lUpperArm) { p.lUpperArm.rotation.z = 1.4; }
+      if (p.rUpperArm) { p.rUpperArm.rotation.z = -1.4; }
     }
 
     // Reset rotations for clean animation frame (except Z which fixes T-pose)
