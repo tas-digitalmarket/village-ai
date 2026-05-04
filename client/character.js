@@ -57,36 +57,49 @@ export class Villager {
         model.position.y = -box2.min.y; // sit on ground
         this.root.add(model);
 
-        // Robust bone detection patterns
-        const findBone = (name) => {
-          const n = name.toLowerCase();
-          if (n.includes('hips') || n.includes('pelvis') || n.includes('root')) return 'hips';
-          if (n.includes('spine2') || n.includes('chest') || n.includes('spine_02')) return 'torso';
-          if (n.includes('neck')) return 'neck';
-          if (n.includes('head')) return 'head';
-          
-          // Left Arm patterns
-          if ((n.includes('leftarm') || n.includes('arm_l') || n.includes('l_arm') || n.includes('upperarm_l')) && !n.includes('fore')) return 'lUpperArm';
-          if (n.includes('leftforearm') || n.includes('forearm_l') || n.includes('l_forearm')) return 'lArm';
-          
-          // Right Arm patterns
-          if ((n.includes('rightarm') || n.includes('arm_r') || n.includes('r_arm') || n.includes('upperarm_r')) && !n.includes('fore')) return 'rUpperArm';
-          if (n.includes('rightforearm') || n.includes('forearm_r') || n.includes('r_forearm')) return 'rArm';
-          
-          // Legs
-          if (n.includes('leftupleg') || n.includes('thigh_l') || n.includes('l_thigh')) return 'lLeg';
-          if (n.includes('rightupleg') || n.includes('thigh_r') || n.includes('r_thigh')) return 'rLeg';
-          return null;
+        // Ultra-aggressive bone detector: matches by name OR position
+        const mapBones = (obj) => {
+          obj.traverse(c => {
+            if (!c.isBone) return;
+            const n = c.name.toLowerCase();
+            const pos = c.position;
+            
+            // 1. Name-based match (fallback to common patterns)
+            let part = null;
+            if (n.includes('hips') || n.includes('pelvis') || n.includes('root') || n.includes('base')) part = 'hips';
+            else if (n.includes('spine2') || n.includes('chest') || n.includes('upper') || n.includes('torso')) part = 'torso';
+            else if (n.includes('neck')) part = 'neck';
+            else if (n.includes('head')) part = 'head';
+            
+            // 2. Position-based heuristic if name fails
+            if (!part) {
+              // Arms are usually high up and side-to-side
+              if (pos.y > 0.3) {
+                 if (n.includes('l') || pos.x < -0.05) {
+                   if (n.includes('fore') || n.includes('arm_02')) part = 'lArm';
+                   else part = 'lUpperArm';
+                 } else if (n.includes('r') || pos.x > 0.05) {
+                   if (n.includes('fore') || n.includes('arm_02')) part = 'rArm';
+                   else part = 'rUpperArm';
+                 }
+              }
+              // Legs are usually below hips
+              if (pos.y < 0) {
+                 if (n.includes('l') || pos.x < -0.05) part = 'lLeg';
+                 if (n.includes('r') || pos.x > 0.05) part = 'rLeg';
+              }
+            }
+
+            if (part && !this.parts[part]) {
+              this.parts[part] = c;
+              console.log(`[Villager] Auto-Mapped: ${c.name} → ${part}`);
+            }
+          });
         };
 
-        model.traverse((c) => {
-          if (c.isBone) {
-            const part = findBone(c.name);
-            if (part) {
-              this.parts[part] = c;
-              console.log(`[Villager] Mapped ${c.name} → ${part}`);
-            }
-          }
+        mapBones(model);
+        
+        if (gltf.animations.length) {
           if (c.isMesh) {
             c.castShadow = true; c.receiveShadow = true;
             if (c.material) {
