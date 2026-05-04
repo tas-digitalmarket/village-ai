@@ -113,51 +113,47 @@ export class Villager {
           }
         });
 
-        // Find SkinnedMesh and extract bones from skeleton
-        let skinnedMesh = null;
-        model.traverse(c => { if (c.isSkinnedMesh && !skinnedMesh) skinnedMesh = c; });
-        
-        if (skinnedMesh && skinnedMesh.skeleton) {
-          const bones = skinnedMesh.skeleton.bones;
-          const boneNames = bones.map(b => b.name);
-          console.log('[Villager] ALL BONES (skeleton):', boneNames.join(', '));
-          
-          // Show on screen for 10 seconds
-          const dbg = document.createElement('div');
-          dbg.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.9);color:#f5c842;padding:10px 16px;border-radius:8px;font-size:11px;z-index:9999;max-width:90vw;word-break:break-all;pointer-events:none;text-align:center;';
-          dbg.innerText = 'Skeleton Bones: ' + boneNames.join(', ');
-          document.body.appendChild(dbg);
-          setTimeout(() => dbg.remove(), 12000);
+        // ─── Exact Mixamo Bone Mapping ───────────────────────
+        // Bone names confirmed from GLB analysis: mixamorig:BoneName
+        const get = (name) => model.getObjectByName('mixamorig:' + name) ||
+                              model.getObjectByName(name);
 
-          // Map bones by name from the skeleton
-          bones.forEach(b => {
-            const n = b.name.toLowerCase();
-            if (n.includes('hips') || n.includes('pelvis') || n.includes('mixamorigjhips')) this.parts.hips = b;
-            else if (n.includes('spine2') || n.includes('chest')) this.parts.torso = b;
-            else if (n.includes('neck')) this.parts.neck = b;
-            else if (n.includes('head')) this.parts.head = b;
-            // Left arm
-            else if ((n.includes('leftarm') || n.includes('upperarm_l') || n.includes('arm_l') || n.includes('l_arm')) && !n.includes('fore')) this.parts.lUpperArm = b;
-            else if (n.includes('leftforearm') || n.includes('forearm_l')) this.parts.lArm = b;
-            // Right arm
-            else if ((n.includes('rightarm') || n.includes('upperarm_r') || n.includes('arm_r') || n.includes('r_arm')) && !n.includes('fore')) this.parts.rUpperArm = b;
-            else if (n.includes('rightforearm') || n.includes('forearm_r')) this.parts.rArm = b;
-            // Legs
-            else if (n.includes('leftupleg') || n.includes('thigh_l') || n.includes('upleg_l')) this.parts.lLeg = b;
-            else if (n.includes('rightupleg') || n.includes('thigh_r') || n.includes('upleg_r')) this.parts.rLeg = b;
+        this.parts.hips       = get('Hips');
+        this.parts.torso      = get('Spine2');
+        this.parts.neck       = get('Neck');
+        this.parts.head       = get('Head');
+        this.parts.rUpperArm  = get('RightArm');
+        this.parts.rArm       = get('RightForeArm');
+        this.parts.lUpperArm  = get('LeftArm');
+        this.parts.lArm       = get('LeftForeArm');
+        this.parts.rLeg       = get('RightUpLeg');
+        this.parts.lLeg       = get('LeftUpLeg');
+        this.parts.rShoulder  = get('RightShoulder');
+        this.parts.lShoulder  = get('LeftShoulder');
+
+        const mapped = Object.entries(this.parts).filter(([,v]) => v).map(([k]) => k);
+        console.log('[Villager] Mapped bones:', mapped.join(', '));
+        if (mapped.length === 0) console.warn('[Villager] WARNING: No bones mapped! Check prefix.');
+
+        // Store all arm bones for brute-force fix
+        this.armBones = [
+          get('RightShoulder'), get('RightArm'),
+          get('LeftShoulder'), get('LeftArm')
+        ].filter(Boolean);
+
+        // Stop the Mixamo animation that keeps arms in T-pose
+        if (gltf.animations.length) {
+          const mixer = new THREE.AnimationMixer(model);
+          // Do NOT call play() — just create so we can stop it
+          gltf.animations.forEach(clip => {
+            const action = mixer.clipAction(clip);
+            action.stop(); // explicitly stop
           });
-
-          // Store skeleton reference for brute-force T-pose fix
-          this.skeleton = skinnedMesh.skeleton;
-          console.log('[Villager] Mapped parts:', Object.keys(this.parts).filter(k => this.parts[k]));
-        } else {
-          console.warn('[Villager] No SkinnedMesh/skeleton found in model!');
+          // Do NOT assign to this.mixer so it never ticks
         }
-
-        // DISABLED: Do NOT play any GLTF animations — they lock bones in T-pose
         this.mixer = null;
         this.useProcedural = true;
-        console.log('[Villager] Loaded & Mapped bones:', PUBLIC_MODELS[idx]);
+        console.log('[Villager] GLB loaded, procedural mode active.');
       },
       undefined,
       () => this._tryLoadModels(idx + 1)
@@ -273,22 +269,19 @@ export class Villager {
     const t = this.animTime;
     const p = this.parts;
 
-    // BRUTE-FORCE T-Pose Fix using skeleton.bones (not traverse)
-    if (this.isGLTF && this.skeleton) {
-      this.skeleton.bones.forEach(b => {
-        const n = b.name.toLowerCase();
-        const isUpperArm = (n.includes('arm') || n.includes('shoulder'))
-          && !n.includes('fore') && !n.includes('hand') && !n.includes('finger');
-        if (isUpperArm) {
-          if (n.includes('left') || n.includes('_l') || n.includes('.l')) {
-            b.rotation.z = 1.4;
-          } else if (n.includes('right') || n.includes('_r') || n.includes('.r')) {
-            b.rotation.z = -1.4;
-          }
-        }
-      });
-      // Also apply via mapped parts
-      if (p.lUpperArm) p.lUpperArm.rotation.z = 1.4;
+    // GUARANTEED T-Pose Fix: Apply to exact arm bones every frame
+    if (this.isGLTF) {
+      if (this.armBones && this.armBones.length) {
+        this.armBones.forEach(b => {
+          const n = b.name.toLowerCase();
+          if (n.includes('right')) b.rotation.z = -1.4;
+          else if (n.includes('left')) b.rotation.z = 1.4;
+        });
+      }
+      // Fallback via mapped parts
+      if (p.rShoulder) p.rShoulder.rotation.z = -0.2;
+      if (p.lShoulder) p.lShoulder.rotation.z =  0.2;
+      if (p.lUpperArm) p.lUpperArm.rotation.z =  1.4;
       if (p.rUpperArm) p.rUpperArm.rotation.z = -1.4;
     }
 
