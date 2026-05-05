@@ -26,16 +26,14 @@ const LOCATIONS = {
   fence_north:  { x: 0,   z: 20   }
 };
 
-// Try multiple model names — Gemini 2.0 Flash first, then 1.5
+// Try gemini-1.5-flash first (most stable free tier), then 2.0
 const MODELS = [
-  'gemini-2.0-flash',
   'gemini-1.5-flash',
+  'gemini-2.0-flash',
   'gemini-1.5-flash-latest',
-  'gemini-1.5-flash-8b'
 ];
 
 function extractJSON(text) {
-  // Strip markdown code fences if present
   const stripped = text.replace(/```(?:json)?[\s\S]*?```/g, t =>
     t.replace(/```(?:json)?/gi, '').replace(/```/g, '')
   ).trim();
@@ -79,17 +77,18 @@ JSON format (copy this structure exactly):
       return parsed;
 
     } catch (err) {
-      // Log FULL error for debugging
       const msg = err.message || String(err);
-      console.error(`[AI] ${modelName} FULL ERROR:`, msg.slice(0, 200));
+      // Extract HTTP status code from error message
+      const statusMatch = msg.match(/\[(\d{3})[^\]]*\]/);
+      const statusCode = statusMatch ? parseInt(statusMatch[1]) : 0;
 
-      const is429 = msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate');
-      const is404 = msg.includes('404') || msg.toLowerCase().includes('not found');
-      const is403 = msg.includes('403') || msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('api key');
+      console.error(`[AI] ${modelName} error (HTTP ${statusCode}):`, msg.slice(0, 150));
 
-      if (is403) { console.error(`[AI] ❌ API KEY INVALID or API not enabled for project!`); break; }
-      if (is429) { console.warn(`[AI] ${modelName} rate limited — waiting 3s then trying next...`); await sleep(3000); continue; }
-      if (is404) { console.warn(`[AI] ${modelName} not found — trying next...`); continue; }
+      if (statusCode === 400) { console.error('[AI] ❌ Invalid API key or bad request — stopping'); break; }
+      if (statusCode === 403) { console.error('[AI] ❌ API not enabled or no permission — stopping'); break; }
+      if (statusCode === 429) { console.warn(`[AI] ${modelName} rate limited — waiting 4s...`); await sleep(4000); continue; }
+      if (statusCode === 404) { console.warn(`[AI] ${modelName} not found — skipping`); continue; }
+      // Generic error — try next
       continue;
     }
   }
