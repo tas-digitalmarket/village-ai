@@ -103,7 +103,7 @@ checking_motorcycle, wandering, tending_crops
 5. Prayers (05:00, 12:00, 15:30, 18:30, 21:00) are MANDATORY — never skip
 6. Always use exact coordinates from LOCATIONS list
 
-Respond ONLY with this JSON (no markdown):
+Respond ONLY with this JSON (no markdown). Everything MUST be in English:
 {
   "action": "one_of_the_available_actions",
   "target_location": "location_name",
@@ -112,8 +112,8 @@ Respond ONLY with this JSON (no markdown):
   "energy_delta": integer_between_-15_and_10,
   "hunger_delta": integer_between_-5_and_15,
   "new_mood": "happy|content|tired|hungry|peaceful|worried|focused|proud|curious",
-  "memory": "Short English/Persian sentence about what Arash did",
-  "thought": "Arash's inner thought in Persian (1 sentence, poetic or simple)"
+  "memory": "Short English sentence about what Arash did",
+  "thought": "Arash's inner thought in English (1 sentence, poetic or simple)"
 }`;
 
   for (const modelName of MODEL_CHAIN) {
@@ -205,14 +205,14 @@ function buildFallbackAction(state, weather) {
 
   const pos = LOCATIONS[loc] || { x: 0, z: 0 };
   const thoughts = {
-    sleeping: 'شب خیر، فردا کار زیاد است...',
-    praying: 'الحمد لله، شکرگزارم.',
-    eating: 'غذا نعمت خداست.',
-    watering_crops: 'زمین تشنه است، باید آبش بدهم.',
-    chopping_wood: 'هیزم برای زمستان لازم است.',
-    harvesting: 'محصول خوبی است، خدا را شکر.',
-    sitting: 'لحظه‌ای استراحت خوب است...',
-    walking: 'هوای تازه خوب است.',
+    sleeping: 'Goodnight, much work to do tomorrow...',
+    praying: 'Alhamdulillah, I am grateful.',
+    eating: 'Food is a blessing from God.',
+    watering_crops: 'The soil is thirsty, I must water it.',
+    chopping_wood: 'Firewood is needed for winter.',
+    harvesting: 'Good harvest, thank God.',
+    sitting: 'A moment of rest is good...',
+    walking: 'Fresh air is good.',
   };
 
   return {
@@ -223,8 +223,8 @@ function buildFallbackAction(state, weather) {
     energy_delta: action === 'sleeping' ? 10 : action === 'eating' ? 3 : -3,
     hunger_delta: action === 'eating' ? -15 : 3,
     new_mood: 'content',
-    memory: `آرش ${action} را در ${loc} انجام داد`,
-    thought: thoughts[action] || 'به کارم ادامه می‌دهم...'
+    memory: `Arash performed ${action} at ${loc}`,
+    thought: thoughts[action] || 'Continuing my work...'
   };
 }
 

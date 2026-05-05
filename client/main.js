@@ -9,6 +9,7 @@ import { buildWorld } from './world.js';
 import { Villager } from './character.js';
 import { WeatherFX } from './weather-fx.js';
 import { HUD } from './hud.js';
+import { CreatorPanel } from './creator.js';
 
 // ── Renderer ─────────────────────────────────────────────────
 const canvas = document.getElementById('world-canvas');
@@ -23,8 +24,8 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 // ── Scene ─────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.FogExp2(0x87ceeb, 0.009);
+scene.background = new THREE.Color(0x0f172a); // slate-900
+scene.fog = new THREE.FogExp2(0x0f172a, 0.009);
 
 // ── Camera ────────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 500);
@@ -36,34 +37,23 @@ controls.dampingFactor = 0.05;
 controls.maxPolarAngle = Math.PI / 2.05;
 controls.minDistance = 4;
 controls.maxDistance = 70;
-controls.target.set(0, 0, 2); // start looking at farm center
+controls.target.set(0, 0, 2); 
 
 // ── Lights ────────────────────────────────────────────────────
-// Hemisphere: sky (blue-ish) from above, ground (warm) from below
 const hemiLight = new THREE.HemisphereLight(0xc8e8ff, 0x8a6040, 0.6);
 scene.add(hemiLight);
 
-// Sun — main directional light with shadows
 const sunLight = new THREE.DirectionalLight(0xfff5cc, 2.0);
 sunLight.position.set(20, 35, 15);
 sunLight.castShadow = true;
 sunLight.shadow.mapSize.set(4096, 4096);
-sunLight.shadow.camera.near = 0.5;
-sunLight.shadow.camera.far = 120;
-sunLight.shadow.camera.left  = -35;
-sunLight.shadow.camera.right =  35;
-sunLight.shadow.camera.top   =  35;
-sunLight.shadow.camera.bottom= -35;
 sunLight.shadow.bias = -0.0005;
-sunLight.shadow.radius = 3; // soft shadows
 scene.add(sunLight);
 
-// Fill light from opposite side (soft blue)
 const fillLight = new THREE.DirectionalLight(0x8899cc, 0.4);
 fillLight.position.set(-15, 10, -10);
 scene.add(fillLight);
 
-// Moon (used at night)
 const moonLight = new THREE.DirectionalLight(0x334466, 0.0);
 moonLight.position.set(-20, 25, -10);
 scene.add(moonLight);
@@ -74,24 +64,17 @@ composer.addPass(new RenderPass(scene, camera));
 
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.18,  // strength
-  0.5,   // radius
-  0.82   // threshold
+  0.18, 0.5, 0.82
 );
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
-// ── Build World ───────────────────────────────────────────────
+// ── Components ───────────────────────────────────────────────
 buildWorld(scene);
-
-// ── Villager ──────────────────────────────────────────────────
 const villager = new Villager(scene);
-
-// ── Weather FX ────────────────────────────────────────────────
 const weatherFX = new WeatherFX(scene, camera);
-
-// ── HUD ───────────────────────────────────────────────────────
 const hud = new HUD();
+const creator = new CreatorPanel((directives) => hud.updateSchedule(directives));
 
 // ── Sky / Day-Night Helpers ───────────────────────────────────
 let worldHour = 6;
@@ -133,13 +116,11 @@ function updateSky(hour) {
   hemiLight.intensity = p.hemi;
   moonLight.intensity = p.moon;
 
-  // Bloom more intense at dawn/dusk
   const isDusk = hour > 17.5 && hour < 21;
   const isDawn = hour > 5 && hour < 9;
   bloom.strength = (isDusk || isDawn) ? 0.45 : 0.18;
   bloom.threshold = (isDusk || isDawn) ? 0.7 : 0.82;
 
-  // Stars visible at night
   scene.traverse((o) => {
     if (o.userData.isStars && o.material) {
       o.material.opacity = hour < 6 || hour > 20 ? 1 : 0;
@@ -147,19 +128,15 @@ function updateSky(hour) {
     }
   });
 
-  // Sun arc
   const angle = ((hour - 6) / 12) * Math.PI;
   sunLight.position.set(Math.cos(angle)*35, Math.max(2, Math.sin(angle)*35), 15);
   moonLight.position.set(-Math.cos(angle)*25, Math.max(2, -Math.sin(angle)*25), -10);
-
-  // Tone mapping exposure
   renderer.toneMappingExposure = hour >= 6 && hour <= 18 ? 1.2 : 0.6;
 }
 
 // ── WebSocket with auto-reconnect ────────────────────────────
 let ws = null;
 let wsReconnectDelay = 2000;
-let wsReconnectTimer = null;
 let wsConnected = false;
 
 function applyState(d) {
@@ -178,17 +155,22 @@ function applyState(d) {
   }
 }
 
-// REST API fallback — load state without WebSocket
 async function fetchStateFallback() {
   try {
     const res = await fetch('/api/state');
     if (!res.ok) return;
     const d = await res.json();
     applyState(d);
-    console.log('[REST] Loaded state via fallback');
-  } catch (e) {
-    console.warn('[REST] Fallback failed:', e.message);
-  }
+  } catch (e) { console.warn('[REST] Fallback failed:', e.message); }
+}
+
+async function fetchDirectivesFallback() {
+  try {
+    const res = await fetch('/api/directives');
+    if (!res.ok) return;
+    const d = await res.json();
+    hud.updateSchedule(d);
+  } catch (e) { console.warn('[REST] Directives failed:', e.message); }
 }
 
 function connectWS() {
@@ -200,47 +182,31 @@ function connectWS() {
   ws.onopen = () => {
     console.log('[WS] Connected');
     wsConnected = true;
-    wsReconnectDelay = 2000; // reset backoff
+    wsReconnectDelay = 2000;
     hud.setConnected(true);
+    fetchDirectivesFallback(); // ensure directives are sync'd
   };
 
   ws.onclose = () => {
     wsConnected = false;
     hud.setConnected(false);
-    console.log(`[WS] Disconnected — retrying in ${wsReconnectDelay / 1000}s...`);
-    wsReconnectTimer = setTimeout(() => {
-      connectWS();
-    }, wsReconnectDelay);
-    wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 30000); // max 30s
-  };
-
-  ws.onerror = () => {
-    wsConnected = false;
-    hud.setConnected(false);
+    setTimeout(connectWS, wsReconnectDelay);
+    wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 30000);
   };
 
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
-      if (msg.type !== 'state') return;
-      applyState(msg.data);
+      if (msg.type === 'state') applyState(msg.data);
+      if (msg.type === 'directives') hud.updateSchedule(msg.data);
+      if (msg.type === 'creator_message') creator.onNewMessage(msg.data.arash_response);
     } catch (e) { /* ignore */ }
   };
 }
 
-// Start WebSocket — also load via REST after 4s if WS hasn't connected
 connectWS();
-setTimeout(() => {
-  if (!wsConnected) {
-    console.warn('[WS] Slow connect — loading state via REST fallback...');
-    fetchStateFallback();
-  }
-}, 4000);
-
-// Poll REST every 10s as backup when WS is disconnected
-setInterval(() => {
-  if (!wsConnected) fetchStateFallback();
-}, 10000);
+setTimeout(() => { if (!wsConnected) fetchStateFallback(); }, 4000);
+setInterval(() => { if (!wsConnected) { fetchStateFallback(); fetchDirectivesFallback(); } }, 10000);
 
 // ── View Toggle Logic ─────────────────────────────────────────
 let isInterior = false;
@@ -248,13 +214,12 @@ const viewBtn = document.getElementById('view-toggle');
 if (viewBtn) {
   viewBtn.onclick = () => {
     isInterior = !isInterior;
-    viewBtn.innerText = isInterior ? '🌳 نمای مزرعه' : '🏠 نمای داخل';
+    viewBtn.innerHTML = isInterior ? '<span>🌳</span> View Farm' : '<span>🏠</span> View Inside';
   };
 }
 
 updateSky(6);
 
-// ── Resize ────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -273,17 +238,12 @@ function animate() {
   villager.update(delta, clock.getElapsedTime());
   weatherFX.update(delta, clock.getElapsedTime());
 
-  // Smooth camera follow / View Mode
   const vPos = villager.currentPos;
   const inHouse = vPos.z < -5.5 && Math.abs(vPos.x) < 3.5;
-  
-  // Auto-toggle view if inside or if manual toggle active
   const showInterior = isInterior || inHouse;
 
   if (showInterior) {
-    // Zoom into cottage
     controls.target.lerp(new THREE.Vector3(0, 1.2, -8), 0.08);
-    // Move camera to a good interior spot if it's too far
     if (camera.position.distanceTo(new THREE.Vector3(0, 2, -5)) > 5) {
        camera.position.lerp(new THREE.Vector3(3.5, 3.5, -4), 0.04);
     }
@@ -293,7 +253,6 @@ function animate() {
     controls.maxDistance = 70;
   }
 
-  // Slowly advance local sky
   worldHour += delta * (24 / 1440);
   if (worldHour >= 24) worldHour = 0;
   updateSky(worldHour);

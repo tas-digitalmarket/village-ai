@@ -1,21 +1,27 @@
 require('dotenv').config();
-const express = require('express');
-const http = require('http');
+const express   = require('express');
+const http      = require('http');
 const WebSocket = require('ws');
-const path = require('path');
-const cors = require('cors');
-const { initDatabase, getState, getMemories } = require('./database');
-const { startScheduler } = require('./scheduler');
+const path      = require('path');
+const cors      = require('cors');
 
-const app = express();
+const {
+  initDatabase, getState, getMemories,
+  getDirectives, addDirective, removeDirective, clearAllDirectives,
+  getCreatorMessages, addCreatorMessage, addMemory
+} = require('./database');
+const { startScheduler } = require('./scheduler');
+const { processDirective } = require('./director');
+
+const app    = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss    = new WebSocket.Server({ server });
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client')));
 
-// Connected WebSocket clients
+// ── WebSocket ──────────────────────────────────────────────────
 const clients = new Set();
 
 wss.on('connection', (ws) => {
@@ -24,9 +30,11 @@ wss.on('connection', (ws) => {
 
   // Send current state immediately on connect
   try {
-    const state = getState();
+    const state    = getState();
     const memories = getMemories(5);
+    const directives = getDirectives();
     ws.send(JSON.stringify({ type: 'state', data: { ...state, memories } }));
+    ws.send(JSON.stringify({ type: 'directives', data: directives }));
   } catch (e) {
     console.error('[WS] Failed to send initial state:', e.message);
   }
@@ -42,7 +50,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Broadcast to all connected clients
 function broadcast(data) {
   const message = JSON.stringify(data);
   clients.forEach((ws) => {
@@ -52,9 +59,9 @@ function broadcast(data) {
   });
 }
 
-// REST API
+// ── REST API — State & Logs ───────────────────────────────────
 app.get('/api/state', (req, res) => {
-  const state = getState();
+  const state    = getState();
   const memories = getMemories(10);
   res.json({ ...state, memories });
 });
@@ -63,12 +70,112 @@ app.get('/api/logs', (req, res) => {
   res.json(getMemories(50));
 });
 
-// Health check for UptimeRobot
+// ── REST API — Directives ─────────────────────────────────────
+app.get('/api/directives', (req, res) => {
+  res.json(getDirectives());
+});
+
+app.post('/api/directive', async (req, res) => {
+  const { message } = req.body;
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+
+  try {
+    const state    = getState();
+    const memories = getMemories(5);
+
+    // Store creator's message
+    addCreatorMessage('creator', message.trim());
+
+    // Process with Gemini
+    const result = await processDirective(message.trim(), state, memories);
+
+    // Store Arash's response
+    addCreatorMessage('arash', result.arash_response);
+
+    // Add to Arash's memory
+    if (result.memory) addMemory(result.memory);
+
+    // Save each directive
+    const savedDirectives = [];
+    if (result.directives && result.directives.length > 0) {
+      result.directives.forEach(d => {
+        const saved = addDirective(d);
+        savedDirectives.push(saved);
+      });
+    }
+
+    // Handle immediate action — force a broadcast
+    if (result.immediate_action) {
+      const { LOCATIONS } = require('./gemini');
+      const pos = LOCATIONS[result.immediate_action.location] || { x: 0, z: 0 };
+      const currentState = getState();
+      const newState = {
+        ...currentState,
+        current_action: result.immediate_action.action,
+        position_x: pos.x,
+        position_z: pos.z
+      };
+      const { saveState } = require('./database');
+      saveState(newState);
+      broadcast({
+        type: 'state',
+        data: {
+          ...newState,
+          thought: result.immediate_action.thought || 'خالقم این را خواست...',
+          memories: getMemories(5)
+        }
+      });
+    }
+
+    // Broadcast new directives to all clients
+    broadcast({ type: 'directives', data: getDirectives() });
+
+    // Broadcast the creator message
+    broadcast({
+      type: 'creator_message',
+      data: {
+        arash_response: result.arash_response,
+        directives: savedDirectives
+      }
+    });
+
+    res.json({
+      arash_response: result.arash_response,
+      directives: savedDirectives,
+      immediate_action: result.immediate_action || null
+    });
+
+  } catch (err) {
+    console.error('[API] /api/directive error:', err.message);
+    res.status(500).json({ error: 'Failed to process directive' });
+  }
+});
+
+app.delete('/api/directive/:id', (req, res) => {
+  removeDirective(req.params.id);
+  broadcast({ type: 'directives', data: getDirectives() });
+  res.json({ ok: true });
+});
+
+app.delete('/api/directives', (req, res) => {
+  clearAllDirectives();
+  broadcast({ type: 'directives', data: [] });
+  res.json({ ok: true });
+});
+
+// ── REST API — Creator Messages ───────────────────────────────
+app.get('/api/creator-messages', (req, res) => {
+  res.json(getCreatorMessages(30));
+});
+
+// ── Health check ──────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'alive', uptime: process.uptime(), timestamp: new Date().toISOString() });
 });
 
-// Initialize DB and start scheduler
+// ── Boot ──────────────────────────────────────────────────────
 initDatabase();
 startScheduler(broadcast);
 
