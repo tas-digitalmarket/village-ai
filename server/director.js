@@ -2,7 +2,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-2.0-flash-001', 'gemini-2.0-flash'];
+const MODEL_CHAIN = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const AVAILABLE_ACTIONS = [
@@ -95,10 +95,11 @@ If no scheduled directives, set directives to [].`;
     }
   }
 
-  // Fallback response
+  // Fallback response if all models fail
+  console.error(`[Director] All models in chain failed to respond for message: "${message}"`);
   return {
-    arash_response: 'بله خالقم، سخنت را شنیدم. دستورت برای من قانون است.',
-    memory: `Creator message: ${message.slice(0, 60)}`,
+    arash_response: 'خالقم، در حال حاضر کمی سردرگم هستم، اما سخنت را در قلبم نگاه می‌دارم. (Gemini API Error)',
+    memory: `Creator message received but AI processing failed: ${message.slice(0, 40)}`,
     directives: [],
     immediate_action: null
   };

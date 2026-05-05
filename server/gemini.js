@@ -2,10 +2,10 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const MODEL_CHAIN = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash-001',
-  'gemini-2.0-flash-lite-001',
-  'gemini-2.0-flash'
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+  'gemini-2.0-flash-lite-001'
 ];
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));

@@ -84,7 +84,10 @@ async function runTick(broadcast) {
     };
 
     saveState(newState);
-    if (decision.memory) addMemory(decision.memory);
+    if (decision.memory) {
+      console.log(`[Scheduler] Memory logged: ${decision.memory}`);
+      addMemory(decision.memory);
+    }
 
     broadcast({
       type: 'state',
@@ -94,6 +97,8 @@ async function runTick(broadcast) {
         memories: getMemories(5)
       }
     });
+
+    console.log(`[Scheduler] Broadcast sent. Current Action: ${newState.current_action}`);
 
     console.log(`[Scheduler] ✅ ${decision.action} | E:${newState.energy} H:${newState.hunger} | ${weather} | ${newWorldTime}`);
   } catch (err) {

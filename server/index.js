@@ -17,6 +17,28 @@ const app    = express();
 const server = http.createServer(app);
 const wss    = new WebSocket.Server({ server });
 
+// Simple in-memory log buffer for debugging
+const serverLogs = [];
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+console.log = (...args) => {
+  serverLogs.push(`[LOG] ${new Date().toLocaleTimeString()}: ${args.join(' ')}`);
+  if (serverLogs.length > 200) serverLogs.shift();
+  originalLog.apply(console, args);
+};
+console.warn = (...args) => {
+  serverLogs.push(`[WARN] ${new Date().toLocaleTimeString()}: ${args.join(' ')}`);
+  if (serverLogs.length > 200) serverLogs.shift();
+  originalWarn.apply(console, args);
+};
+console.error = (...args) => {
+  serverLogs.push(`[ERR] ${new Date().toLocaleTimeString()}: ${args.join(' ')}`);
+  if (serverLogs.length > 200) serverLogs.shift();
+  originalError.apply(console, args);
+};
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client')));
@@ -168,6 +190,16 @@ app.delete('/api/directives', (req, res) => {
 // ── REST API — Creator Messages ───────────────────────────────
 app.get('/api/creator-messages', (req, res) => {
   res.json(getCreatorMessages(30));
+});
+
+app.get('/api/debug/logs', (req, res) => {
+  res.send(`
+    <html><body style="background:#000;color:#0f0;font-family:monospace;padding:20px;">
+      <h2>Village AI Server Logs</h2>
+      <pre>${serverLogs.join('\n')}</pre>
+      <script>setTimeout(() => location.reload(), 5000);</script>
+    </body></html>
+  `);
 });
 
 // ── Health check ──────────────────────────────────────────────
