@@ -149,6 +149,11 @@ function applyState(d) {
   if (d.weather) weatherFX.setWeather(d.weather);
   hud.update(d);
 
+  // Update the upcoming schedule panel if data is included in state
+  if (d.upcomingSchedule) {
+    hud.updateSchedule(d.upcomingSchedule);
+  }
+
   const ls = document.getElementById('loading-screen');
   if (ls && !ls.classList.contains('hidden')) {
     setTimeout(() => ls.classList.add('hidden'), 400);
@@ -253,7 +258,9 @@ function animate() {
     controls.maxDistance = 70;
   }
 
-  worldHour += delta * (24 / 1440);
+  // World clock: 1 real second = 0.5 world minutes (30 world min per real minute)
+  // This keeps client-side sky in sync with server ticks
+  worldHour += delta * (30 / 60);
   if (worldHour >= 24) worldHour = 0;
   updateSky(worldHour);
 

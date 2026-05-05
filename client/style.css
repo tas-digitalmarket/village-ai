@@ -239,6 +239,32 @@ body {
   font-size: 0.8125rem;
 }
 
+/* Routine items (AI daily schedule) - subtle */
+.schedule-item--routine {
+  opacity: 0.6;
+  border-left: 2px solid rgba(148, 163, 184, 0.3);
+}
+
+.schedule-item--routine:hover {
+  opacity: 1;
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+/* Creator directive items - highlighted */
+.schedule-item--creator {
+  background: rgba(74, 222, 128, 0.06);
+  border-left: 2px solid var(--primary);
+}
+
+.schedule-item--creator .sched-time {
+  color: var(--primary);
+}
+
+.sched-source-icon {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
 /* ---- Creator Chat Panel ---- */
 #creator-toggle {
   position: fixed;
@@ -402,19 +428,22 @@ body {
   cursor: not-allowed;
 }
 
-/* ---- Thought Bubble (World) ---- */
+/* ---- Thought Bubble (World) — 30% smaller ---- */
 #thought-bubble {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -150%);
   background: white;
-  color: black;
-  padding: 12px 20px;
-  border-radius: 20px;
+  color: #111;
+  padding: 8px 14px;
+  border-radius: 14px;
   font-weight: 600;
-  font-size: 1rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  font-size: 0.7rem;
+  max-width: 200px;
+  text-align: center;
+  line-height: 1.4;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.4);
   z-index: 1000;
   transition: opacity 0.5s;
 }
@@ -422,12 +451,12 @@ body {
 #thought-bubble::after {
   content: '';
   position: absolute;
-  bottom: -10px;
+  bottom: -7px;
   left: 50%;
   transform: translateX(-50%);
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid white;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 7px solid white;
 }
 
 #thought-bubble.hidden { opacity: 0; pointer-events: none; }

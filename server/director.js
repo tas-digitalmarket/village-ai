@@ -29,7 +29,7 @@ async function callOpenRouter(modelId, prompt) {
       model: modelId,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      max_tokens: 400
+      max_tokens: 500
     })
   });
 
@@ -47,26 +47,42 @@ async function callOpenRouter(modelId, prompt) {
 async function processDirective(message, state, memories) {
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No memories yet.';
 
-  const prompt = `You are Arash, a humble 35-year-old village farmer. Your Creator has spoken to you.
+  const prompt = `You are Arash, a humble 35-year-old village farmer. Your Creator (خالق) has spoken to you.
 CRITICAL: Output ONLY raw JSON. No markdown, no code blocks.
 
 CREATOR'S MESSAGE: "${message}"
-
 YOUR STATE: Time ${state.world_time}, Action: ${state.current_action}, Mood: ${state.mood}
 MEMORIES: ${memText}
 
-Parse the Creator's message and respond in English only. Extract any time-scheduled commands.
+Parse the Creator's message:
+- If it mentions a TIME (e.g. "at 16:00", "at 10pm", "at 22:00"), extract it as a directive.
+- If it says "every day", "daily", "روزانه", set recurring: true.
+- If it says "now" or "فوری", set immediate_action.
+- If no time mentioned, directives = [].
 
-Example output:
-{"arash_response":"Yes my Creator, I understand and will obey your command.","memory":"Creator commanded me to sleep at 22:00.","directives":[{"time":"22:00","action":"sleeping","location":"bed","recurring":false,"label":"Sleep at 10pm"}],"immediate_action":null}
+AVAILABLE ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, running_to_shelter, sitting, praying, fishing, tending_animals, checking_motorcycle, wandering
+AVAILABLE LOCATIONS: home, bed, table, east_field, west_field, well, wood_stump, haystack, path_center, prayer_spot, fishing_spot, motorcycle
 
-Now respond to the Creator's actual message above with your own JSON:`;
+IMPORTANT: Arash responds BILINGUALLY — first in English, then in Persian (Farsi).
+
+Example output for "Sleep at 22:00 every night":
+{"arash_response_en":"Yes my Creator, I will sleep at 10 PM every night as you have commanded. Your word is my guide.","arash_response_fa":"بله خالقم، هر شب ساعت ۲۲ می‌خوابم، چنانکه فرمودید. کلام شما راهنمای من است.","arash_response":"Yes my Creator, I will sleep at 10 PM every night. / بله خالقم، هر شب ساعت ۲۲ می‌خوابم.","memory":"Creator commanded: sleep at 22:00 every night","directives":[{"time":"22:00","action":"sleeping","location":"bed","recurring":true,"label":"Sleep at 10 PM"}],"immediate_action":null}
+
+Now respond to: "${message}"`;
 
   for (const { id, maxRetries, delayMs } of MODELS) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const parsed = await callOpenRouter(id, prompt);
-        console.log(`[Director:${id}] ✅ Response received`);
+
+        // Build combined bilingual response if separate fields exist
+        if (!parsed.arash_response && parsed.arash_response_en && parsed.arash_response_fa) {
+          parsed.arash_response = `${parsed.arash_response_en}\n\n${parsed.arash_response_fa}`;
+        } else if (!parsed.arash_response) {
+          parsed.arash_response = 'Yes, my Creator. I will obey. / بله خالقم، اطاعت می‌کنم.';
+        }
+
+        console.log(`[Director:${id}] ✅ Response: ${parsed.arash_response?.slice(0, 60)}`);
         return parsed;
       } catch (err) {
         const is429 = err.code === 429 || err.message.includes('429');
@@ -86,8 +102,8 @@ Now respond to the Creator's actual message above with your own JSON:`;
   }
 
   return {
-    arash_response: 'Yes, my Creator. I have heard your voice and will obey.',
-    memory: `Creator message: ${message.slice(0, 60)}`,
+    arash_response: 'Yes, my Creator. I have heard your voice and will remember it. / بله خالقم، سخنت را شنیدم و به یاد خواهم سپرد.',
+    memory: `Creator command remembered: ${message.slice(0, 60)}`,
     directives: [],
     immediate_action: null
   };

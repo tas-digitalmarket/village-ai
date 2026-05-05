@@ -138,7 +138,7 @@ export class HUD {
     if (!directives || directives.length === 0) {
       const li = document.createElement('li');
       li.className = 'schedule-empty';
-      li.textContent = 'No scheduled directives';
+      li.textContent = 'Loading today\'s schedule...';
       this.$schedList.appendChild(li);
       return;
     }
@@ -146,21 +146,35 @@ export class HUD {
     // Sort by time
     const sorted = [...directives].sort((a, b) => a.time.localeCompare(b.time));
     sorted.forEach(d => {
+      const isCreator = d.source === 'creator';
       const li = document.createElement('li');
-      li.className = 'schedule-item';
+      li.className = `schedule-item ${isCreator ? 'schedule-item--creator' : 'schedule-item--routine'}`;
+
+      const sourceIcon = isCreator ? '👑' : '🤖';
+      const badge = isCreator
+        ? `${d.recurring ? '<span class="sched-badge">daily</span>' : '<span class="sched-badge sched-badge--once">once</span>'}`
+        : `<span class="sched-source-icon">routine</span>`;
+
       li.innerHTML = `
+        <span class="sched-source-icon">${sourceIcon}</span>
         <span class="sched-time">${d.time}</span>
         <span class="sched-label">${d.label || d.action}</span>
-        ${d.recurring ? '<span class="sched-badge">daily</span>' : '<span class="sched-badge sched-badge--once">once</span>'}
-        <button class="sched-del" data-id="${d.id}" title="Remove">✕</button>
+        ${badge}
+        ${isCreator ? `<button class="sched-del" data-id="${d.id}" title="Remove">✕</button>` : ''}
       `;
-      // Delete button
-      li.querySelector('.sched-del').addEventListener('click', async (e) => {
-        const id = e.target.dataset.id;
-        await fetch(`/api/directive/${id}`, { method: 'DELETE' });
-        li.remove();
-        if (this.$schedList.children.length === 0) this.updateSchedule([]);
-      });
+
+      // Delete button only for Creator directives
+      if (isCreator) {
+        li.querySelector('.sched-del').addEventListener('click', async (e) => {
+          const id = e.target.dataset.id;
+          await fetch(`/api/directive/${id}`, { method: 'DELETE' });
+          li.remove();
+          if (this.$schedList.querySelectorAll('.schedule-item--creator').length === 0) {
+            // Routine items remain, no need to show empty state
+          }
+        });
+      }
+
       this.$schedList.appendChild(li);
     });
   }
