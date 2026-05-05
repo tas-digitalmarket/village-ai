@@ -202,6 +202,19 @@ app.get('/api/debug/logs', (req, res) => {
   `);
 });
 
+app.get('/api/debug/test-ai', async (req, res) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY is missing' });
+  }
+  try {
+    const { askGemini } = require('./gemini');
+    const result = await askGemini(getState(), [], 'sunny');
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ── Health check ──────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'alive', uptime: process.uptime(), timestamp: new Date().toISOString() });

@@ -1,5 +1,9 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'MISSING_KEY');
+
+if (!process.env.GEMINI_API_KEY) {
+  console.warn('[Gemini] ⚠️ WARNING: GEMINI_API_KEY is not set in environment variables!');
+}
 
 const MODEL_CHAIN = [
   'gemini-1.5-flash',

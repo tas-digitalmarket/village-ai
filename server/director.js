@@ -1,6 +1,10 @@
 // director.js — Creator ↔ Arash communication via Gemini
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'MISSING_KEY');
+
+if (!process.env.GEMINI_API_KEY) {
+  console.warn('[Director] ⚠️ WARNING: GEMINI_API_KEY is not set!');
+}
 
 const MODEL_CHAIN = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
