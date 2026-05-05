@@ -53,11 +53,12 @@ Respond ONLY with this JSON structure:
 }`;
 
   const models = [
-    OPENROUTER_MODEL, 
-    'meta-llama/llama-3.1-8b-instruct:free',
-    'google/gemma-2-9b-it:free',
+    'google/gemma-3-27b-it:free',
+    'google/gemma-3-12b-it:free',
+    'google/gemma-3-4b-it:free',
     'mistralai/mistral-7b-instruct:free',
-    'openchat/openchat-7b:free'
+    'meta-llama/llama-3.2-3b-instruct:free',
+    'google/gemini-2.0-flash-001'
   ];
   
   for (const modelName of models) {
