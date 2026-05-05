@@ -214,7 +214,7 @@ function animate() {
   const delta = clock.getDelta();
 
   controls.update();
-  villager.update(delta, clock.getElapsedTime());
+  villager.update(delta, clock.getElapsedTime(), camera);
   weatherFX.update(delta, clock.getElapsedTime());
 
   // Smooth camera follow / View Mode
