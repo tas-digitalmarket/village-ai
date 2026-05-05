@@ -7,7 +7,8 @@ if (!GEMINI_API_KEY || GEMINI_API_KEY === 'MISSING_KEY') {
   console.log('[Gemini] ✅ API Key loaded:', GEMINI_API_KEY.slice(0, 10) + '...');
 }
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+// Use v1 (stable) instead of v1beta — fixes 404 on gemini-1.5-flash
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY, { apiVersion: 'v1' });
 
 const LOCATIONS = {
   home:         { x: 0,   z: 0    },
@@ -25,11 +26,12 @@ const LOCATIONS = {
   fence_north:  { x: 0,   z: 20   }
 };
 
-// Versioned model names work more reliably on free tier
+// gemini-1.5-flash: 1500 RPD free — perfect for 1440 daily ticks (1/min)
+// gemini-2.0-flash: only 200 RPD free — NOT enough for 1-min ticks
 const MODELS = [
-  'gemini-2.0-flash',
+  'gemini-1.5-flash',
   'gemini-1.5-flash-001',
-  'gemini-1.5-flash-002',
+  'gemini-2.0-flash-lite',
 ];
 
 // Global concurrency lock — prevents overlapping AI calls eating rate limit

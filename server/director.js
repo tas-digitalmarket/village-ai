@@ -1,9 +1,9 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GEMINI_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY, { apiVersion: 'v1' });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
+const MODELS = ['gemini-1.5-flash', 'gemini-1.5-flash-001', 'gemini-2.0-flash-lite'];
 
 function extractJSON(text) {
   const stripped = text.replace(/```(?:json)?[\s\S]*?```/g, t =>
