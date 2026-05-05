@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: village-ai
+    runtime: node
+    buildCommand: npm install --production
+    startCommand: node server/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TICK_INTERVAL
+        value: "5"
+      - key: DATA_DIR
+        value: /data/village
+    disk:
+      name: village-data
+      mountPath: /data/village
+      sizeGB: 1

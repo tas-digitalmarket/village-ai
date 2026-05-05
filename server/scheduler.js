@@ -24,7 +24,7 @@ async function runTick(broadcast) {
   try {
     const state = getState();
     const memories = getMemories(10);
-    const newWorldTime = advanceWorldTime(state.world_time);
+    const newWorldTime = advanceWorldTime(state.world_time, 30);
     const weather = generateWeather(tickCount);
 
     logWeather(weather, newWorldTime);

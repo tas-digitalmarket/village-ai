@@ -73,7 +73,12 @@ initDatabase();
 startScheduler(broadcast);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`\n🌍 Village AI Server running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🌍 Village AI Server running on http://0.0.0.0:${PORT}`);
   console.log(`🤖 Arash is alive and thinking...\n`);
+});
+
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
+  process.exit(1);
 });

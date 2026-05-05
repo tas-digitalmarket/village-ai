@@ -156,35 +156,91 @@ function updateSky(hour) {
   renderer.toneMappingExposure = hour >= 6 && hour <= 18 ? 1.2 : 0.6;
 }
 
-// ── WebSocket ─────────────────────────────────────────────────
-const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(`${wsProtocol}//${location.host}`);
+// ── WebSocket with auto-reconnect ────────────────────────────
+let ws = null;
+let wsReconnectDelay = 2000;
+let wsReconnectTimer = null;
+let wsConnected = false;
 
-ws.onopen  = () => hud.setConnected(true);
-ws.onclose = () => hud.setConnected(false);
-ws.onerror = () => hud.setConnected(false);
+function applyState(d) {
+  if (d.world_time) {
+    const [h, m] = d.world_time.split(':').map(Number);
+    worldHour = h + m / 60;
+    hud.setTime(d.world_time, h);
+  }
+  villager.setState(d);
+  if (d.weather) weatherFX.setWeather(d.weather);
+  hud.update(d);
 
-ws.onmessage = (event) => {
+  const ls = document.getElementById('loading-screen');
+  if (ls && !ls.classList.contains('hidden')) {
+    setTimeout(() => ls.classList.add('hidden'), 400);
+  }
+}
+
+// REST API fallback — load state without WebSocket
+async function fetchStateFallback() {
   try {
-    const msg = JSON.parse(event.data);
-    if (msg.type !== 'state') return;
-    const d = msg.data;
+    const res = await fetch('/api/state');
+    if (!res.ok) return;
+    const d = await res.json();
+    applyState(d);
+    console.log('[REST] Loaded state via fallback');
+  } catch (e) {
+    console.warn('[REST] Fallback failed:', e.message);
+  }
+}
 
-    if (d.world_time) {
-      const [h, m] = d.world_time.split(':').map(Number);
-      worldHour = h + m / 60;
-      hud.setTime(d.world_time, h);
-    }
-    villager.setState(d);
-    if (d.weather) weatherFX.setWeather(d.weather);
-    hud.update(d);
+function connectWS() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
-    const ls = document.getElementById('loading-screen');
-    if (ls && !ls.classList.contains('hidden')) {
-      setTimeout(() => ls.classList.add('hidden'), 400);
-    }
-  } catch (e) { /* ignore */ }
-};
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${wsProtocol}//${location.host}`);
+
+  ws.onopen = () => {
+    console.log('[WS] Connected');
+    wsConnected = true;
+    wsReconnectDelay = 2000; // reset backoff
+    hud.setConnected(true);
+  };
+
+  ws.onclose = () => {
+    wsConnected = false;
+    hud.setConnected(false);
+    console.log(`[WS] Disconnected — retrying in ${wsReconnectDelay / 1000}s...`);
+    wsReconnectTimer = setTimeout(() => {
+      connectWS();
+    }, wsReconnectDelay);
+    wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 30000); // max 30s
+  };
+
+  ws.onerror = () => {
+    wsConnected = false;
+    hud.setConnected(false);
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type !== 'state') return;
+      applyState(msg.data);
+    } catch (e) { /* ignore */ }
+  };
+}
+
+// Start WebSocket — also load via REST after 4s if WS hasn't connected
+connectWS();
+setTimeout(() => {
+  if (!wsConnected) {
+    console.warn('[WS] Slow connect — loading state via REST fallback...');
+    fetchStateFallback();
+  }
+}, 4000);
+
+// Poll REST every 10s as backup when WS is disconnected
+setInterval(() => {
+  if (!wsConnected) fetchStateFallback();
+}, 10000);
 
 // ── View Toggle Logic ─────────────────────────────────────────
 let isInterior = false;
@@ -214,7 +270,7 @@ function animate() {
   const delta = clock.getDelta();
 
   controls.update();
-  villager.update(delta, clock.getElapsedTime(), camera);
+  villager.update(delta, clock.getElapsedTime());
   weatherFX.update(delta, clock.getElapsedTime());
 
   // Smooth camera follow / View Mode

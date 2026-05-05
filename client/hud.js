@@ -4,7 +4,7 @@ const ACTION_ICONS = {
   watering_crops: '💧', harvesting: '🌾', eating: '🍞',
   sleeping: '😴', running_to_shelter: '🏃', sitting: '🧘',
   praying: '🙏', fishing: '🎣', tending_animals: '🐄',
-  tending_animals: '🐄'
+  checking_motorcycle: '🏍️', wandering: '🌿', tending_crops: '🌱'
 };
 
 const ACTION_LABELS_FA = {
@@ -19,7 +19,10 @@ const ACTION_LABELS_FA = {
   sitting: 'در حال نشستن',
   praying: 'در حال نماز',
   fishing: 'در حال ماهیگیری',
-  tending_animals: 'در حال مراقبت از حیوانات'
+  tending_animals: 'در حال مراقبت از حیوانات',
+  checking_motorcycle: 'دارد موتور را نگاه می‌کند',
+  wandering: 'در حال گشت در مزرعه',
+  tending_crops: 'در حال مراقبت از کشتزار'
 };
 
 const WEATHER_ICONS = {
@@ -29,7 +32,8 @@ const WEATHER_ICONS = {
 
 const MOOD_ICONS = {
   happy: '😄', content: '😊', tired: '😴',
-  hungry: '😫', peaceful: '😌', worried: '😟'
+  hungry: '😫', peaceful: '😌', worried: '😟',
+  focused: '🧐', proud: '😎', curious: '🤔'
 };
 
 export class HUD {

@@ -1,5 +1,4 @@
 node_modules
 .env
-data/village.json
 .DS_Store
 *.log
