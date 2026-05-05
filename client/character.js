@@ -162,46 +162,109 @@ export class Villager {
     if (!this.spriteMesh) return;
 
     if (action === 'sleeping') {
-      // Lay flat — tilt sprite horizontal
       this.spriteMesh.rotation.z = Math.PI / 2;
-      this.spriteMesh.position.y = 0.4;
-      this.spriteMesh.scale.set(1, 1, 1);
+      this.spriteMesh.position.y = 0.5;
+      // Gentle breathing scale
+      const br = 1 + Math.sin(t * 0.7) * 0.015;
+      this.spriteMesh.scale.set(br, 1, 1);
     } else {
       this.spriteMesh.rotation.z = 0;
-      this.spriteMesh.position.y = 1.1;
+      this.spriteMesh.position.y = 1.2;
 
       switch (action) {
-        case 'walking':
+        case 'walking': {
+          // Strong up-down bob + slight side lean
+          this.spriteMesh.position.y = 1.2 + Math.abs(Math.sin(t * 6)) * 0.09;
+          this.spriteMesh.rotation.z = Math.sin(t * 6) * 0.06;
+          break;
+        }
         case 'running_to_shelter': {
-          const spd = action === 'running_to_shelter' ? 9 : 5;
-          // Bob up and down while walking
-          this.spriteMesh.position.y = 1.1 + Math.abs(Math.sin(t * spd)) * 0.06;
-          // Slight lean forward
-          this.spriteMesh.rotation.z = Math.sin(t * spd) * 0.05;
+          // Fast urgent movement
+          this.spriteMesh.position.y = 1.2 + Math.abs(Math.sin(t * 11)) * 0.13;
+          this.spriteMesh.rotation.z = Math.sin(t * 11) * 0.12;
+          this.spriteMesh.scale.setScalar(1 + Math.sin(t * 11) * 0.02);
           break;
         }
         case 'chopping_wood': {
-          // Swing up and slam down
-          const phase = Math.sin(t * 5);
-          this.spriteMesh.position.y = 1.1 + (phase > 0 ? phase * 0.15 : 0);
-          this.spriteMesh.rotation.z = phase * 0.12;
+          // Big slam: rise high, drop fast
+          const chopCycle = (t * 2.5) % (Math.PI * 2);
+          const chopY = Math.max(0, Math.sin(chopCycle));
+          this.spriteMesh.position.y = 1.2 + chopY * 0.18;
+          this.spriteMesh.rotation.z = -chopY * 0.18;
+          // Vibrate on impact
+          if (chopCycle > Math.PI && chopCycle < Math.PI + 0.3) {
+            this.spriteMesh.position.x = (Math.random() - 0.5) * 0.04;
+          } else {
+            this.spriteMesh.position.x = 0;
+          }
           break;
         }
-        case 'watering_crops':
-        case 'tending_crops': {
-          // Gentle side-to-side sway
-          this.spriteMesh.rotation.z = Math.sin(t * 2) * 0.04;
+        case 'watering_crops': {
+          // Tilt forward as if pouring, sway side to side
+          this.spriteMesh.rotation.z = Math.sin(t * 1.8) * 0.09 + 0.08;
+          this.spriteMesh.position.y = 1.2 + Math.sin(t * 1.8) * 0.03;
+          break;
+        }
+        case 'tending_crops':
+        case 'harvesting': {
+          // Bend forward and back rhythmically
+          const bend = Math.sin(t * 2.5);
+          this.spriteMesh.position.y = 1.2 - (bend > 0 ? bend * 0.12 : 0);
+          this.spriteMesh.rotation.z = bend * 0.1;
+          break;
+        }
+        case 'tending_animals': {
+          // Bobbing — crouching to pet, standing
+          this.spriteMesh.position.y = 1.2 - Math.abs(Math.sin(t * 1.5)) * 0.1;
+          this.spriteMesh.rotation.z = Math.sin(t * 1.5) * 0.06;
           break;
         }
         case 'eating': {
-          // Nod head (scale Y slightly)
-          const nod = 1 + Math.sin(t * 4) * 0.02;
-          this.spriteMesh.scale.set(1, nod, 1);
+          // Nod head rhythmically (eating motion)
+          const eat = Math.sin(t * 3.5);
+          this.spriteMesh.position.y = 1.2 + eat * 0.04;
+          this.spriteMesh.scale.y = 1 + eat * 0.025;
+          break;
+        }
+        case 'praying': {
+          // Slow bow forward and return (rukoo motion)
+          const bow = Math.sin(t * 0.8) * 0.5 + 0.5;
+          this.spriteMesh.rotation.z = bow * 0.22;
+          this.spriteMesh.position.y = 1.2 - bow * 0.06;
+          break;
+        }
+        case 'fishing': {
+          // Cast and wait: slight lean forward, occasional small jerk
+          this.spriteMesh.rotation.z = 0.1 + Math.sin(t * 0.5) * 0.03;
+          if (Math.random() < 0.005) {
+            // Fish tug!
+            this.spriteMesh.position.y = 1.2 + 0.12;
+            setTimeout(() => { if (this.spriteMesh) this.spriteMesh.position.y = 1.2; }, 150);
+          }
+          break;
+        }
+        case 'sitting': {
+          // Very still with slight breathing
+          const sit = Math.sin(t * 1.2) * 0.012;
+          this.spriteMesh.position.y = 1.2 + sit;
+          this.spriteMesh.scale.set(1 + sit, 1 + sit * 0.5, 1);
+          break;
+        }
+        case 'checking_motorcycle': {
+          // Lean forward and back, admiring the bike
+          this.spriteMesh.rotation.z = Math.sin(t * 2) * 0.12;
+          this.spriteMesh.position.y = 1.2 + Math.sin(t * 2) * 0.05;
+          break;
+        }
+        case 'wandering': {
+          // Casual slow walk
+          this.spriteMesh.position.y = 1.2 + Math.abs(Math.sin(t * 3)) * 0.05;
+          this.spriteMesh.rotation.z = Math.sin(t * 3) * 0.04;
           break;
         }
         default: {
-          // Idle breathing — very gentle scale pulse
-          const breath = 1 + Math.sin(t * 1.5) * 0.012;
+          // Idle breathing
+          const breath = 1 + Math.sin(t * 1.4) * 0.012;
           this.spriteMesh.scale.set(breath, breath, 1);
           break;
         }
