@@ -1,172 +1,29 @@
-// character.js — Realistic villager: tries public GLB, falls back to detailed PBR geometric model
+// character.js — 100% Procedural Persian Villager (Arash)
+// No GLB loading — full control over all animations
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-
-// Public GLB URLs to try (CORS-enabled)
-const PUBLIC_MODELS = [
-  '/models/villager.glb',
-  'https://threejs.org/examples/models/gltf/Soldier.glb',
-];
 
 export class Villager {
   constructor(scene) {
-    this.scene       = scene;
-    this.root        = new THREE.Group();
+    this.scene      = scene;
+    this.root       = new THREE.Group();
     scene.add(this.root);
 
-    this.targetPos   = new THREE.Vector3(0, 0, 2);
-    this.currentPos  = new THREE.Vector3(0, 0, 2);
-    this.moveSpeed   = 1.8;
-    this.state       = { current_action: 'idle', energy: 80, hunger: 20 };
+    this.targetPos  = new THREE.Vector3(0, 0, 2);
+    this.currentPos = new THREE.Vector3(0, 0, 2);
+    this.moveSpeed  = 1.8;
+    this.state      = { current_action: 'idle', energy: 80, hunger: 20 };
     this.initialized = false;
+    this.parts      = {};
+    this.animTime   = 0;
 
-    this.mixer    = null;
-    this.clips    = {};
-    this.activeClip = null;
-    this.parts    = {};
-    this.animTime = 0;
-    this.isGLTF   = false;
-
-    this._tryLoadModels(0);
+    this._buildGeometric();
   }
 
-  _tryLoadModels(idx) {
-    if (idx >= PUBLIC_MODELS.length) {
-      this._buildGeometric();
-      return;
-    }
-    const loader = new GLTFLoader();
-    loader.load(
-      PUBLIC_MODELS[idx],
-      (gltf) => {
-        this.isGLTF = true;
-        const model = gltf.scene;
-
-        // Auto-scale: measure bounding box, normalize to 1.8 units tall
-        const box = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const targetHeight = 1.8;
-        const scaleFactor = maxDim > 0 ? targetHeight / maxDim : 1;
-        model.scale.setScalar(scaleFactor);
-        console.log(`[Villager] Auto-scale: ${maxDim.toFixed(2)} → factor ${scaleFactor.toFixed(3)}`);
-
-        // Re-compute after scale to center at ground level
-        const box2 = new THREE.Box3().setFromObject(model);
-        model.position.y = -box2.min.y; // sit on ground
-        this.root.add(model);
-
-        // Ultra-aggressive bone detector: matches by name OR position
-        const mapBones = (obj) => {
-          obj.traverse(c => {
-            if (!c.isBone) return;
-            const n = c.name.toLowerCase();
-            const pos = c.position;
-            
-            // 1. Name-based match (fallback to common patterns)
-            let part = null;
-            if (n.includes('hips') || n.includes('pelvis') || n.includes('root') || n.includes('base')) part = 'hips';
-            else if (n.includes('spine2') || n.includes('chest') || n.includes('upper') || n.includes('torso')) part = 'torso';
-            else if (n.includes('neck')) part = 'neck';
-            else if (n.includes('head')) part = 'head';
-            
-            // 2. Position-based heuristic if name fails
-            if (!part) {
-              // Arms are usually high up and side-to-side
-              if (pos.y > 0.3) {
-                 if (n.includes('l') || pos.x < -0.05) {
-                   if (n.includes('fore') || n.includes('arm_02')) part = 'lArm';
-                   else part = 'lUpperArm';
-                 } else if (n.includes('r') || pos.x > 0.05) {
-                   if (n.includes('fore') || n.includes('arm_02')) part = 'rArm';
-                   else part = 'rUpperArm';
-                 }
-              }
-              // Legs are usually below hips
-              if (pos.y < 0) {
-                 if (n.includes('l') || pos.x < -0.05) part = 'lLeg';
-                 if (n.includes('r') || pos.x > 0.05) part = 'rLeg';
-              }
-            }
-
-            if (part && !this.parts[part]) {
-              this.parts[part] = c;
-              console.log(`[Villager] Auto-Mapped: ${c.name} → ${part}`);
-            }
-          });
-        };
-
-        mapBones(model);
-        
-        model.traverse((c) => {
-          if (c.isMesh) {
-            c.castShadow = true; c.receiveShadow = true;
-            if (c.material) {
-              const old = c.material;
-              c.material = new THREE.MeshStandardMaterial({
-                map: old.map || null,
-                color: old.color || 0xffffff,
-                roughness: 0.8, metalness: 0.05
-              });
-            }
-          }
-        });
-
-        // ─── Exact Mixamo Bone Mapping ───────────────────────
-        // Bone names confirmed from GLB analysis: mixamorig:BoneName
-        const get = (name) => model.getObjectByName('mixamorig:' + name) ||
-                              model.getObjectByName(name);
-
-        this.parts.hips       = get('Hips');
-        this.parts.torso      = get('Spine2');
-        this.parts.neck       = get('Neck');
-        this.parts.head       = get('Head');
-        this.parts.rUpperArm  = get('RightArm');
-        this.parts.rArm       = get('RightForeArm');
-        this.parts.lUpperArm  = get('LeftArm');
-        this.parts.lArm       = get('LeftForeArm');
-        this.parts.rLeg       = get('RightUpLeg');
-        this.parts.lLeg       = get('LeftUpLeg');
-        this.parts.rShoulder  = get('RightShoulder');
-        this.parts.lShoulder  = get('LeftShoulder');
-
-        const mapped = Object.entries(this.parts).filter(([,v]) => v).map(([k]) => k);
-        console.log('[Villager] Mapped bones:', mapped.join(', '));
-        if (mapped.length === 0) console.warn('[Villager] WARNING: No bones mapped! Check prefix.');
-
-        // Store all arm bones for brute-force fix
-        this.armBones = [
-          get('RightShoulder'), get('RightArm'),
-          get('LeftShoulder'), get('LeftArm')
-        ].filter(Boolean);
-
-        // Stop the Mixamo animation that keeps arms in T-pose
-        if (gltf.animations.length) {
-          const mixer = new THREE.AnimationMixer(model);
-          // Do NOT call play() — just create so we can stop it
-          gltf.animations.forEach(clip => {
-            const action = mixer.clipAction(clip);
-            action.stop(); // explicitly stop
-          });
-          // Do NOT assign to this.mixer so it never ticks
-        }
-        this.mixer = null;
-        this.useProcedural = true;
-        console.log('[Villager] GLB loaded, procedural mode active.');
-      },
-      undefined,
-      () => this._tryLoadModels(idx + 1)
-    );
-  }
-
-  // ── Detailed Geometric Character ────────────────────────────
+  // ── Build Procedural Body ────────────────────────────────────
   _buildGeometric() {
-    console.log('[Villager] Building geometric character');
-
-    const skin   = new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.8, metalness: 0.0 });
-    const shirt  = new THREE.MeshStandardMaterial({ color: 0x7a5c2e, roughness: 0.9 }); // linen
-    const pants  = new THREE.MeshStandardMaterial({ color: 0x3d4a30, roughness: 0.9 }); // dark green
+    const skin   = new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.8 });
+    const shirt  = new THREE.MeshStandardMaterial({ color: 0x7a5c2e, roughness: 0.9 });
+    const pants  = new THREE.MeshStandardMaterial({ color: 0x3d4a30, roughness: 0.9 });
     const hat    = new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.85 });
     const beard  = new THREE.MeshStandardMaterial({ color: 0x2a1a0a, roughness: 0.9 });
     const shoe   = new THREE.MeshStandardMaterial({ color: 0x1a0f05, roughness: 0.7 });
@@ -174,173 +31,217 @@ export class Villager {
     const belt   = new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.6, metalness: 0.1 });
     const buckle = new THREE.MeshStandardMaterial({ color: 0xb08030, roughness: 0.3, metalness: 0.8 });
 
-    const add = (geo, mat, x, y, z, name, rx=0, ry=0, rz=0) => {
+    // Helper: add mesh to root, optionally register as a named "bone"
+    const addTo = (parent, geo, mat, x, y, z, name) => {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
-      m.rotation.set(rx, ry, rz);
       m.castShadow = true;
       m.receiveShadow = true;
-      this.root.add(m);
+      parent.add(m);
       if (name) this.parts[name] = m;
       return m;
     };
 
-    // ── Legs ────────────────────────────────────────────────────
-    add(new THREE.CapsuleGeometry(0.075, 0.38, 4, 8), pants, -0.13, 0.43, 0, 'lLeg');
-    add(new THREE.CapsuleGeometry(0.075, 0.38, 4, 8), pants,  0.13, 0.43, 0, 'rLeg');
-    // Feet / shoes
-    add(new THREE.BoxGeometry(0.14, 0.09, 0.25), shoe, -0.13, 0.19, 0.05, 'lFoot');
-    add(new THREE.BoxGeometry(0.14, 0.09, 0.25), shoe,  0.13, 0.19, 0.05, 'rFoot');
+    // Use groups as "bones" for arms and legs so we can rotate them naturally
+    // ── HIPS (root bone) ─────────────────────────────────────
+    const hipsGroup = new THREE.Group();
+    hipsGroup.position.set(0, 0.77, 0);
+    this.root.add(hipsGroup);
+    this.parts.hips = hipsGroup;
 
-    // ── Hips + Torso ────────────────────────────────────────────
-    add(new THREE.BoxGeometry(0.42, 0.24, 0.26), pants, 0, 0.77, 0, 'hips');
+    addTo(hipsGroup, new THREE.BoxGeometry(0.42, 0.24, 0.26), pants, 0, 0, 0);
     // Belt
-    add(new THREE.BoxGeometry(0.44, 0.07, 0.28), belt, 0, 0.92, 0);
-    add(new THREE.BoxGeometry(0.07, 0.09, 0.07), buckle, 0, 0.92, 0.145);
-    // Shirt torso
-    add(new THREE.CapsuleGeometry(0.19, 0.48, 4, 8), shirt, 0, 1.14, 0, 'torso');
+    addTo(hipsGroup, new THREE.BoxGeometry(0.44, 0.07, 0.28), belt, 0, 0.15, 0);
+    addTo(hipsGroup, new THREE.BoxGeometry(0.07, 0.09, 0.07), buckle, 0, 0.15, 0.145);
 
-    // ── Arms ────────────────────────────────────────────────────
-    // Upper arm
-    const lUpperArm = add(new THREE.CapsuleGeometry(0.065, 0.22, 4, 8), shirt, -0.29, 1.14, 0, 'lUpperArm');
-    const rUpperArm = add(new THREE.CapsuleGeometry(0.065, 0.22, 4, 8), shirt,  0.29, 1.14, 0, 'rUpperArm');
-    // Forearm
-    add(new THREE.CapsuleGeometry(0.055, 0.20, 4, 8), skin, -0.29, 0.82, 0, 'lArm');
-    add(new THREE.CapsuleGeometry(0.055, 0.20, 4, 8), skin,  0.29, 0.82, 0, 'rArm');
-    // Hands
-    add(new THREE.SphereGeometry(0.065, 6, 5), skin, -0.29, 0.64, 0, 'lHand');
-    add(new THREE.SphereGeometry(0.065, 6, 5), skin,  0.29, 0.64, 0, 'rHand');
+    // ── TORSO ─────────────────────────────────────────────────
+    const torsoGroup = new THREE.Group();
+    torsoGroup.position.set(0, 0.37, 0); // relative to hips
+    hipsGroup.add(torsoGroup);
+    this.parts.torso = torsoGroup;
 
-    // ── Shoulders (epaulettes) ───────────────────────────────────
-    add(new THREE.SphereGeometry(0.09, 7, 5), shirt, -0.27, 1.35, 0);
-    add(new THREE.SphereGeometry(0.09, 7, 5), shirt,  0.27, 1.35, 0);
+    addTo(torsoGroup, new THREE.CapsuleGeometry(0.19, 0.48, 4, 8), shirt, 0, 0, 0);
 
-    // ── Neck + Head ─────────────────────────────────────────────
-    add(new THREE.CylinderGeometry(0.07, 0.09, 0.16, 7), skin, 0, 1.6, 0, 'neck');
-    add(new THREE.SphereGeometry(0.175, 10, 10), skin, 0, 1.79, 0, 'head');
+    // ── NECK + HEAD ────────────────────────────────────────────
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 0.42, 0);
+    torsoGroup.add(headGroup);
+    this.parts.head = headGroup;
 
-    // ── Face Details ─────────────────────────────────────────────
-    // Eyes
-    add(new THREE.SphereGeometry(0.028, 6, 5), eye, -0.065, 1.82, 0.155);
-    add(new THREE.SphereGeometry(0.028, 6, 5), eye,  0.065, 1.82, 0.155);
-    // Eyebrows (dark strip)
-    add(new THREE.BoxGeometry(0.065, 0.015, 0.025), beard, -0.065, 1.856, 0.158);
-    add(new THREE.BoxGeometry(0.065, 0.015, 0.025), beard,  0.065, 1.856, 0.158);
-    // Nose
-    add(new THREE.SphereGeometry(0.022, 5, 4), skin, 0, 1.79, 0.17);
-    // Mouth
-    add(new THREE.BoxGeometry(0.07, 0.018, 0.02), beard, 0, 1.755, 0.165);
+    addTo(headGroup, new THREE.CylinderGeometry(0.07, 0.09, 0.16, 7), skin, 0, -0.1, 0, 'neck');
+    addTo(headGroup, new THREE.SphereGeometry(0.175, 10, 10), skin, 0, 0.09, 0);
+    // Face
+    addTo(headGroup, new THREE.SphereGeometry(0.028, 6, 5), eye, -0.065, 0.12, 0.155);
+    addTo(headGroup, new THREE.SphereGeometry(0.028, 6, 5), eye,  0.065, 0.12, 0.155);
+    addTo(headGroup, new THREE.BoxGeometry(0.065, 0.015, 0.025), beard, -0.065, 0.146, 0.158);
+    addTo(headGroup, new THREE.BoxGeometry(0.065, 0.015, 0.025), beard,  0.065, 0.146, 0.158);
+    addTo(headGroup, new THREE.SphereGeometry(0.022, 5, 4), skin, 0, 0.09, 0.17);
     // Beard
-    add(new THREE.SphereGeometry(0.09, 7, 5), beard, 0, 1.71, 0.1);
-    add(new THREE.ConeGeometry(0.065, 0.18, 6), beard, 0, 1.60, 0.1, null, -0.35);
+    addTo(headGroup, new THREE.BoxGeometry(0.22, 0.09, 0.04), beard, 0, -0.03, 0.14);
+    addTo(headGroup, new THREE.BoxGeometry(0.10, 0.12, 0.04), beard, 0, -0.10, 0.13);
     // Mustache
-    add(new THREE.CapsuleGeometry(0.018, 0.06, 3, 6), beard, -0.04, 1.77, 0.17);
-    add(new THREE.CapsuleGeometry(0.018, 0.06, 3, 6), beard,  0.04, 1.77, 0.17);
-    // Ears
-    add(new THREE.SphereGeometry(0.03, 5, 4), skin, -0.175, 1.79, 0);
-    add(new THREE.SphereGeometry(0.03, 5, 4), skin,  0.175, 1.79, 0);
+    addTo(headGroup, new THREE.BoxGeometry(0.16, 0.035, 0.04), beard, 0, 0.04, 0.158);
+    // Hat
+    addTo(headGroup, new THREE.CylinderGeometry(0.19, 0.20, 0.08, 8), hat, 0, 0.225, 0);
+    addTo(headGroup, new THREE.CylinderGeometry(0.145, 0.165, 0.20, 8), hat, 0, 0.35, 0);
 
-    // ── Hat ─────────────────────────────────────────────────────
-    add(new THREE.CylinderGeometry(0.175, 0.175, 0.24, 10), hat, 0, 1.985, 0, 'hat');
-    add(new THREE.CylinderGeometry(0.27, 0.27, 0.04, 10), hat, 0, 1.865, 0); // brim
-    // Hat band
-    add(new THREE.CylinderGeometry(0.178, 0.178, 0.06, 10, 1, true), belt, 0, 1.89, 0);
+    // Shoulders
+    addTo(torsoGroup, new THREE.SphereGeometry(0.09, 7, 5), shirt, -0.27, 0.20, 0);
+    addTo(torsoGroup, new THREE.SphereGeometry(0.09, 7, 5), shirt,  0.27, 0.20, 0);
+
+    // ── LEFT ARM (group for rotation) ─────────────────────────
+    const lUpperArmGroup = new THREE.Group();
+    lUpperArmGroup.position.set(-0.28, 0.17, 0);
+    torsoGroup.add(lUpperArmGroup);
+    this.parts.lUpperArm = lUpperArmGroup;
+    addTo(lUpperArmGroup, new THREE.CapsuleGeometry(0.065, 0.22, 4, 8), shirt, 0, -0.13, 0);
+
+    const lArmGroup = new THREE.Group();
+    lArmGroup.position.set(0, -0.30, 0);
+    lUpperArmGroup.add(lArmGroup);
+    this.parts.lArm = lArmGroup;
+    addTo(lArmGroup, new THREE.CapsuleGeometry(0.055, 0.20, 4, 8), skin, 0, -0.11, 0);
+    addTo(lArmGroup, new THREE.SphereGeometry(0.065, 6, 5), skin, 0, -0.24, 0, 'lHand');
+
+    // ── RIGHT ARM (group for rotation) ────────────────────────
+    const rUpperArmGroup = new THREE.Group();
+    rUpperArmGroup.position.set(0.28, 0.17, 0);
+    torsoGroup.add(rUpperArmGroup);
+    this.parts.rUpperArm = rUpperArmGroup;
+    addTo(rUpperArmGroup, new THREE.CapsuleGeometry(0.065, 0.22, 4, 8), shirt, 0, -0.13, 0);
+
+    const rArmGroup = new THREE.Group();
+    rArmGroup.position.set(0, -0.30, 0);
+    rUpperArmGroup.add(rArmGroup);
+    this.parts.rArm = rArmGroup;
+    addTo(rArmGroup, new THREE.CapsuleGeometry(0.055, 0.20, 4, 8), skin, 0, -0.11, 0);
+    addTo(rArmGroup, new THREE.SphereGeometry(0.065, 6, 5), skin, 0, -0.24, 0, 'rHand');
+
+    // ── LEFT LEG (group for rotation) ─────────────────────────
+    const lLegGroup = new THREE.Group();
+    lLegGroup.position.set(-0.13, -0.12, 0);
+    hipsGroup.add(lLegGroup);
+    this.parts.lLeg = lLegGroup;
+    addTo(lLegGroup, new THREE.CapsuleGeometry(0.075, 0.38, 4, 8), pants, 0, -0.21, 0);
+    addTo(lLegGroup, new THREE.BoxGeometry(0.14, 0.09, 0.25), shoe,  0, -0.46, 0.05);
+
+    // ── RIGHT LEG (group for rotation) ────────────────────────
+    const rLegGroup = new THREE.Group();
+    rLegGroup.position.set(0.13, -0.12, 0);
+    hipsGroup.add(rLegGroup);
+    this.parts.rLeg = rLegGroup;
+    addTo(rLegGroup, new THREE.CapsuleGeometry(0.075, 0.38, 4, 8), pants, 0, -0.21, 0);
+    addTo(rLegGroup, new THREE.BoxGeometry(0.14, 0.09, 0.25), shoe,  0, -0.46, 0.05);
+
+    console.log('[Villager] Procedural character built. Parts:', Object.keys(this.parts).join(', '));
   }
 
-  // ── GLTF Animation ──────────────────────────────────────────
-  _playGLTF(name) {
-    const MAP = { idle:'Idle', walking:'Walk', running_to_shelter:'Run', sleeping:'Idle' };
-    const key = MAP[name] || 'Idle';
-    const found = Object.keys(this.clips).find(k => k.toLowerCase().includes(key.toLowerCase()))
-               || Object.keys(this.clips)[0];
-    if (!found) return;
-    const action = this.clips[found];
-    if (this.activeClip && this.activeClip !== action) {
-      this.activeClip.fadeOut(0.3);
-      action.reset().fadeIn(0.3).play();
-    } else action.play();
-    this.activeClip = action;
-  }
-
-  // ── Procedural Animation ─────────────────────────────────────
-  _animateGeometric(delta, elapsed, action) {
-    if (Object.keys(this.parts).length === 0) return;
+  // ── Procedural Animations ────────────────────────────────────
+  _animate(delta, elapsed, action) {
     this.animTime += delta;
     const t = this.animTime;
     const p = this.parts;
 
-    // GUARANTEED T-Pose Fix: Apply to exact arm bones every frame
-    if (this.isGLTF) {
-      if (this.armBones && this.armBones.length) {
-        this.armBones.forEach(b => {
-          const n = b.name.toLowerCase();
-          if (n.includes('right')) b.rotation.z = -1.4;
-          else if (n.includes('left')) b.rotation.z = 1.4;
-        });
-      }
-      // Fallback via mapped parts
-      if (p.rShoulder) p.rShoulder.rotation.z = -0.2;
-      if (p.lShoulder) p.lShoulder.rotation.z =  0.2;
-      if (p.lUpperArm) p.lUpperArm.rotation.z =  1.4;
-      if (p.rUpperArm) p.rUpperArm.rotation.z = -1.4;
-    }
-
-    // Reset rotations for clean animation frame (except Z which fixes T-pose)
-    ['lArm','rArm','lLeg','rLeg','lUpperArm','rUpperArm'].forEach(k => {
-      if (p[k]) { p[k].rotation.x = 0; }
-    });
-    if (p.head) p.head.rotation.x = 0;
+    // Reset all rotations each frame for clean state
+    if (p.lUpperArm) { p.lUpperArm.rotation.set(0, 0, 0); }
+    if (p.rUpperArm) { p.rUpperArm.rotation.set(0, 0, 0); }
+    if (p.lArm)      { p.lArm.rotation.set(0, 0, 0); }
+    if (p.rArm)      { p.rArm.rotation.set(0, 0, 0); }
+    if (p.lLeg)      { p.lLeg.rotation.set(0, 0, 0); }
+    if (p.rLeg)      { p.rLeg.rotation.set(0, 0, 0); }
+    if (p.head)      { p.head.rotation.set(0, 0, 0); }
+    if (p.torso)     { p.torso.rotation.set(0, 0, 0); }
 
     switch (action) {
       case 'walking':
       case 'running_to_shelter': {
         const spd = action === 'running_to_shelter' ? 6 : 3.5;
-        const sw  = action === 'running_to_shelter' ? 0.7 : 0.5;
-        if (p.lUpperArm) p.lUpperArm.rotation.x =  Math.sin(t*spd)*sw;
-        if (p.rUpperArm) p.rUpperArm.rotation.x = -Math.sin(t*spd)*sw;
-        if (p.lLeg)  p.lLeg.rotation.x = -Math.sin(t*spd)*0.55;
-        if (p.rLeg)  p.rLeg.rotation.x =  Math.sin(t*spd)*0.55;
+        const sw  = action === 'running_to_shelter' ? 0.65 : 0.45;
+        if (p.lUpperArm) p.lUpperArm.rotation.x =  Math.sin(t * spd) * sw;
+        if (p.rUpperArm) p.rUpperArm.rotation.x = -Math.sin(t * spd) * sw;
+        if (p.lLeg)      p.lLeg.rotation.x = -Math.sin(t * spd) * 0.55;
+        if (p.rLeg)      p.rLeg.rotation.x =  Math.sin(t * spd) * 0.55;
+        // Subtle body bob
+        if (p.hips) p.hips.position.y = 0.77 + Math.abs(Math.sin(t * spd * 2)) * 0.03;
         break;
       }
+
       case 'chopping_wood': {
-        if (p.rUpperArm) p.rUpperArm.rotation.x = -1.2 + Math.sin(t*5)*1.2;
-        if (p.rArm)      p.rArm.rotation.x      = -0.5 + Math.sin(t*5)*0.5;
-        if (p.lUpperArm) p.lUpperArm.rotation.x = -0.8 + Math.sin(t*5)*0.4;
+        // Right arm swings the axe overhead and down
+        const chop = Math.sin(t * 5);
+        if (p.rUpperArm) p.rUpperArm.rotation.x = -1.4 + chop * 1.4;
+        if (p.rArm)      p.rArm.rotation.x      = -0.5 + chop * 0.5;
+        if (p.lUpperArm) p.lUpperArm.rotation.x = -0.6 + chop * 0.3;
+        if (p.torso)     p.torso.rotation.z      = Math.sin(t * 5) * 0.08;
+        if (p.head)      p.head.rotation.x       = 0.3;
         break;
       }
+
       case 'watering_crops': {
-        if (p.rUpperArm) p.rUpperArm.rotation.x = -0.8 + Math.sin(t*3)*0.3;
-        if (p.lUpperArm) p.lUpperArm.rotation.x = -0.4 + Math.cos(t*3)*0.2;
+        // Hold out one arm with a watering can
+        if (p.rUpperArm) p.rUpperArm.rotation.x = -0.9 + Math.sin(t * 2) * 0.15;
+        if (p.rArm)      p.rArm.rotation.x      = -0.4 + Math.sin(t * 2) * 0.1;
+        if (p.lUpperArm) p.lUpperArm.rotation.x = -0.3;
+        if (p.head)      p.head.rotation.x       = 0.25;
         break;
       }
+
       case 'eating': {
+        // Right hand moves food to mouth repeatedly
         if (p.rUpperArm) p.rUpperArm.rotation.x = -1.5;
-        if (p.rArm)      p.rArm.rotation.x      = -0.6 + Math.sin(t*4)*0.4;
-        if (p.head)      p.head.rotation.x      = 0.2 + Math.sin(t*4)*0.1;
+        if (p.rArm)      p.rArm.rotation.x      = -0.6 + Math.sin(t * 4) * 0.45;
+        if (p.head)      p.head.rotation.x       = 0.2 + Math.sin(t * 4) * 0.1;
+        if (p.lUpperArm) p.lUpperArm.rotation.x  = -0.4;
         break;
       }
+
       case 'sleeping': {
-        if (this.isGLTF) {
-          this.root.rotation.x = -Math.PI/2;
-          this.root.position.y = 0.55;
-          if (p.lUpperArm) p.lUpperArm.rotation.z = 0.2;
-          if (p.rUpperArm) p.rUpperArm.rotation.z = -0.2;
-        } else {
-          if (p.torso) { p.torso.rotation.x = Math.PI/2; p.torso.position.y = 0.5; }
-          if (p.head)  { p.head.position.y = 0.52; p.head.rotation.x = Math.PI/2; }
-        }
-        break;
+        // Lay entire character flat on the bed
+        this.root.rotation.x = -Math.PI / 2;
+        this.root.position.y = 0.55;
+        // Arms relaxed at sides
+        if (p.lUpperArm) p.lUpperArm.rotation.x = 0.15;
+        if (p.rUpperArm) p.rUpperArm.rotation.x = 0.15;
+        // Gentle breathing
+        if (p.torso) p.torso.position.y = Math.sin(t * 0.8) * 0.008;
+        return; // skip position.y reset at bottom
       }
+
       case 'praying': {
-        if (p.lUpperArm) p.lUpperArm.rotation.x = -1.6;
-        if (p.rUpperArm) p.rUpperArm.rotation.x = -1.6;
-        if (p.head)      p.head.rotation.x = 0.6;
+        // Both arms raised, head bowed
+        if (p.lUpperArm) p.lUpperArm.rotation.x = -1.5;
+        if (p.rUpperArm) p.rUpperArm.rotation.x = -1.5;
+        if (p.lArm)      p.lArm.rotation.x      = -0.6;
+        if (p.rArm)      p.rArm.rotation.x      = -0.6;
+        if (p.head)      p.head.rotation.x       = 0.7;
         break;
       }
-      default: {
-        const b = Math.sin(t*1.5)*0.02;
-        if (p.head) p.head.rotation.x = b;
+
+      case 'tending_crops':
+      case 'harvesting': {
+        // Bend forward, both arms working near ground
+        if (p.torso)     p.torso.rotation.x      = 0.5;
+        if (p.lUpperArm) p.lUpperArm.rotation.x  = -0.8 + Math.sin(t * 3) * 0.3;
+        if (p.rUpperArm) p.rUpperArm.rotation.x  = -0.8 + Math.cos(t * 3) * 0.3;
+        if (p.head)      p.head.rotation.x        = -0.4;
+        break;
       }
+
+      default: {
+        // Idle — gentle breathing animation
+        const b = Math.sin(t * 1.4) * 0.015;
+        if (p.head)      p.head.rotation.x       = b;
+        if (p.torso)     p.torso.position.y       = b * 0.5;
+        if (p.lUpperArm) p.lUpperArm.rotation.x   = b * 0.5;
+        if (p.rUpperArm) p.rUpperArm.rotation.x   = b * 0.5;
+        break;
+      }
+    }
+
+    // Ensure normal upright position (unless sleeping overrode it)
+    this.root.rotation.x = 0;
+    if (p.hips && action !== 'walking' && action !== 'running_to_shelter') {
+      p.hips.position.y = 0.77;
     }
   }
 
@@ -357,32 +258,19 @@ export class Villager {
         this.initialized = true;
       }
     }
-    if (this.isGLTF && this.mixer) {
-      const actionName = (data.current_action || 'idle').toLowerCase();
-      // More fuzzy matching for animations
-      const clipKey = Object.keys(this.clips).find(k => k.includes(actionName));
-      if (clipKey) {
-        this._playGLTF(clipKey);
-        this.useProcedural = false;
-      } else {
-        if (this.activeClip) this.activeClip.stop();
-        this.useProcedural = true;
-      }
-    } else {
-      this.useProcedural = true;
-    }
   }
 
   update(delta, elapsed) {
     const action = this.state.current_action || 'idle';
-    const dist = this.currentPos.distanceTo(this.targetPos);
-    
-    // Reset root transforms if not sleeping
+
+    // Reset root for non-sleeping states
     if (action !== 'sleeping') {
       this.root.rotation.x = 0;
       this.root.position.y = 0;
     }
 
+    // Move toward target
+    const dist = this.currentPos.distanceTo(this.targetPos);
     if (dist > 0.05) {
       const step = Math.min(this.moveSpeed * delta, dist);
       const dir  = this.targetPos.clone().sub(this.currentPos).normalize();
@@ -392,17 +280,7 @@ export class Villager {
       const angle = Math.atan2(dir.x, dir.z);
       this.root.rotation.y = THREE.MathUtils.lerp(this.root.rotation.y, angle, 0.12);
     }
-    
-    if (this.mixer && !this.useProcedural) {
-      this.mixer.update(delta);
-    } else {
-      this._animateGeometric(delta, elapsed, action);
-    }
 
-    // FINAL OVERRIDE for Sleeping (force it to stay rotated)
-    if (action === 'sleeping') {
-      this.root.rotation.x = -Math.PI/2;
-      this.root.position.y = 0.55;
-    }
+    this._animate(delta, elapsed, action);
   }
 }
