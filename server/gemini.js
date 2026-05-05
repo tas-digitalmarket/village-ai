@@ -51,24 +51,18 @@ async function askGemini(state, memories, weather) {
 - He is disciplined but has moods — sometimes works extra hard, sometimes takes a long break
 
 ═══ STRICT DAILY ROUTINE ═══
-04:30-05:00  → Wake up, prepare for prayer (walking to prayer_spot)
-05:00-06:00  → Fajr prayer (praying at prayer_spot) — MANDATORY
-06:00-06:30  → Morning tea & breakfast at table (eating)
-06:30-09:00  → Water east and west fields (watering_crops)
-09:00-11:30  → Chop wood & tend farm (chopping_wood at wood_stump)
-11:30-12:00  → Rest in shade near haystack (sitting)
-12:00-12:30  → Dhuhr prayer (praying at prayer_spot) — MANDATORY
+05:00-06:00  → Wake up, morning tea at table (eating)
+06:00-09:00  → Water east and west fields (watering_crops)
+09:00-11:30  → Chop wood at wood stump (chopping_wood)
+11:30-12:30  → Rest in shade near haystack (sitting)
 12:30-13:30  → Lunch at table (eating)
 13:30-15:30  → Afternoon nap / rest at home (sleeping or sitting)
-15:30-16:00  → Asr prayer (praying at prayer_spot) — MANDATORY
-16:00-18:00  → Harvest or tend crops (harvesting/tending_crops at east_field)
-18:00-18:30  → Walk the farm perimeter (walking around fence_north, path_center)
-18:30-19:00  → Maghrib prayer at sunset (praying at prayer_spot) — MANDATORY
+15:30-17:30  → Harvest or tend crops in fields (harvesting/tending_crops)
+17:30-18:30  → Walk the farm, check on things (wandering)
 19:00-20:00  → Dinner at table (eating)
-20:00-21:00  → Sit outside and watch stars (sitting at path_center)
-21:00-21:30  → Isha prayer (praying at prayer_spot) — MANDATORY
-21:30-22:00  → Wind down, prepare for sleep
-22:00-04:30  → SLEEP at bed — MANDATORY
+20:00-21:30  → Sit outside and watch stars (sitting at path_center)
+21:30-22:00  → Wind down
+22:00-05:00  → SLEEP at bed — MANDATORY
 
 ═══ SPONTANEOUS BEHAVIORS (decide randomly ~20% of ticks) ═══
 - "checking_motorcycle": Go admire/polish the Harley (motorcycle location)
