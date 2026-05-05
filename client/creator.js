@@ -71,8 +71,8 @@ export class CreatorPanel {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      // Show Arash response
-      this._addMessage('arash', data.arash_response, true);
+      // Arash response is handled by the WebSocket broadcast (creator_message event)
+      // to ensure all connected clients see it without duplication here.
 
       // Notify about new directives
       if (data.directives && data.directives.length > 0 && this.onDirectivesUpdate) {

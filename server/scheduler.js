@@ -183,4 +183,4 @@ function startScheduler(broadcast) {
   cron.schedule(`*/${interval} * * * *`, () => runTick(broadcast));
 }
 
-module.exports = { startScheduler };
+module.exports = { startScheduler, buildUpcomingSchedule };

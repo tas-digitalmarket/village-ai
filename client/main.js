@@ -74,6 +74,7 @@ buildWorld(scene);
 const villager = new Villager(scene);
 const weatherFX = new WeatherFX(scene, camera);
 const hud = new HUD();
+window.hud = hud; // EXPORT to window for interpolation
 const creator = new CreatorPanel((directives) => hud.updateSchedule(directives));
 
 // ── Sky / Day-Night Helpers ───────────────────────────────────

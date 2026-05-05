@@ -536,3 +536,7 @@ body {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* User requested: make thought balloon 10% smaller */
+#thought-bubble { transform: scale(0.85); transform-origin: bottom center; }
+

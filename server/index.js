@@ -55,7 +55,19 @@ wss.on('connection', (ws) => {
     const state    = getState();
     const memories = getMemories(5);
     const directives = getDirectives();
-    ws.send(JSON.stringify({ type: 'state', data: { ...state, memories } }));
+    
+    // Build schedule from directives + daily routine so it's not empty until first tick
+    const { generateWeather } = require('./weather');
+    const { buildUpcomingSchedule } = require('./scheduler');
+    
+    // We pass 1 for tick count to get current weather
+    const weather = state.weather || generateWeather(1);
+    const upcomingSchedule = buildUpcomingSchedule(directives, state.world_time || '06:00', weather);
+    
+    ws.send(JSON.stringify({ 
+      type: 'state', 
+      data: { ...state, memories, upcomingSchedule } 
+    }));
     ws.send(JSON.stringify({ type: 'directives', data: directives }));
   } catch (e) {
     console.error('[WS] Failed to send initial state:', e.message);
