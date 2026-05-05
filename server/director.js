@@ -46,7 +46,12 @@ Respond ONLY with this JSON structure:
 If no immediate action, set immediate_action to null.
 If no scheduled directives, set directives to [].`;
 
-  const models = [OPENROUTER_MODEL, OPENROUTER_FALLBACK, 'google/gemma-2-9b-it'];
+  const models = [
+    OPENROUTER_MODEL, 
+    'google/gemini-flash-1.5',
+    'google/gemma-2-9b-it:free',
+    'mistralai/mistral-7b-instruct:free'
+  ];
 
   for (const modelName of models) {
     try {

@@ -52,7 +52,13 @@ Respond ONLY with this JSON structure:
   "thought": "Arash's inner thought in English"
 }`;
 
-  const models = [OPENROUTER_MODEL, OPENROUTER_FALLBACK, 'google/gemma-2-9b-it'];
+  const models = [
+    OPENROUTER_MODEL, 
+    'google/gemini-flash-1.5',
+    'google/gemma-2-9b-it:free',
+    'mistralai/mistral-7b-instruct:free',
+    'openchat/openchat-7b:free'
+  ];
   
   for (const modelName of models) {
     try {
