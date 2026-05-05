@@ -1,70 +1,30 @@
-const { GEMINI_API_KEY } = require('./config');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GEMINI_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
 
+if (!GEMINI_API_KEY || GEMINI_API_KEY === 'MISSING_KEY') {
+  console.warn('[Gemini] ⚠️ WARNING: GEMINI_API_KEY is not set!');
+}
+
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const LOCATIONS = {
-  home: { x: 0, z: 0 },
-  bed: { x: 0, z: 0.2 },
-  east_field: { x: 10, z: 0 },
-  west_field: { x: -10, z: 0 },
-  well: { x: 0, z: 10 },
-  wood_stump: { x: 5, z: 5 },
-  haystack: { x: -5, z: 5 },
-  path_center: { x: 0, z: 0 },
-  prayer_spot: { x: 2, z: -4 },
-  fishing_spot: { x: -10, z: -10 },
-  table: { x: 0.5, z: -0.5 },
-  motorcycle: { x: 8, z: -8 },
-  fence_north: { x: 0, z: 20 }
+  home:         { x: 0,   z: 0    },
+  bed:          { x: 0,   z: 0.2  },
+  east_field:   { x: 10,  z: 0    },
+  west_field:   { x: -10, z: 0    },
+  well:         { x: 0,   z: 10   },
+  wood_stump:   { x: 5,   z: 5    },
+  haystack:     { x: -5,  z: 5    },
+  path_center:  { x: 0,   z: 0    },
+  prayer_spot:  { x: 2,   z: -4   },
+  fishing_spot: { x: -10, z: -10  },
+  table:        { x: 0.5, z: -0.5 },
+  motorcycle:   { x: 8,   z: -8   },
+  fence_north:  { x: 0,   z: 20   }
 };
 
-// Ordered: best first, free fallbacks after
-const MODELS = [
-  { id: 'google/gemma-3-27b-it:free',           maxRetries: 2, delayMs: 3000 },
-  { id: 'google/gemma-3-12b-it:free',           maxRetries: 2, delayMs: 2000 },
-  { id: 'google/gemma-3-4b-it:free',            maxRetries: 2, delayMs: 2000 },
-  { id: 'meta-llama/llama-3.1-8b-instruct:free', maxRetries: 1, delayMs: 2000 },
-  { id: 'meta-llama/llama-3.2-3b-instruct:free', maxRetries: 1, delayMs: 2000 },
-  { id: 'google/gemini-2.0-flash-001',          maxRetries: 1, delayMs: 0 },
-];
-
-// Strip markdown code fences and extract the JSON object
-function extractJSON(text) {
-  // Remove ```json ... ``` or ``` ... ```
-  const stripped = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-  const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON object found in response');
-  return JSON.parse(match[0]);
-}
-
-async function callOpenRouter(modelId, prompt) {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GEMINI_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://village-ai.render.com',
-      'X-Title': 'Village AI'
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      max_tokens: 400
-    })
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    const code = response.status;
-    throw Object.assign(new Error(`OpenRouter ${code}: ${err.slice(0, 120)}`), { code });
-  }
-
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('Empty response from OpenRouter');
-  return extractJSON(text);
-}
+const MODELS = [PRIMARY_MODEL, FALLBACK_MODEL];
 
 async function askGemini(state, memories, weather) {
   const h = parseFloat((state.world_time || '08:00').replace(':', '.'));
@@ -72,120 +32,115 @@ async function askGemini(state, memories, weather) {
   const routineHint = getRoutineHint(h, weather, state);
 
   const prompt = `You are the autonomous AI brain of Arash, a 35-year-old village farmer.
-CRITICAL: Output ONLY raw JSON. No markdown, no code blocks, no explanation.
+CRITICAL: Output ONLY raw JSON. No markdown. No code blocks. No explanation.
 
 CURRENT STATE:
 - Time: ${state.world_time} | Energy: ${state.energy}/100 | Hunger: ${state.hunger}/100
 - Action: ${state.current_action} | Mood: ${state.mood} | Weather: ${weather}
 
-ROUTINE: ${routineHint}
+ROUTINE NOW: ${routineHint}
 
-RECENT MEMORIES:
+MEMORIES:
 ${memText}
 
 LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), prayer_spot(2,-4), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8), fence_north(0,20)
 
-Respond with ONLY this JSON (no markdown):
-{"action":"eating","target_location":"table","duration":15,"energy_delta":3,"hunger_delta":-15,"new_mood":"content","memory":"Arash ate breakfast at the table.","thought":"A good meal to start the day."}
+VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, running_to_shelter, sitting, praying, fishing, tending_animals, checking_motorcycle, wandering, tending_crops
 
-Now generate your own decision for Arash's current situation:`;
+Output this exact JSON with your decision:
+{"action":"watering_crops","target_location":"east_field","target_position":{"x":10,"z":0},"duration":15,"energy_delta":-5,"hunger_delta":3,"new_mood":"content","memory":"Arash watered the east field crops.","thought":"The crops need water in this heat."}`;
 
-  for (const { id, maxRetries, delayMs } of MODELS) {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const parsed = await callOpenRouter(id, prompt);
+  for (const modelName of MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 300 }
+      });
 
-        if (parsed.target_location && LOCATIONS[parsed.target_location]) {
-          parsed.target_position = LOCATIONS[parsed.target_location];
-        } else {
-          parsed.target_position = { x: state.position_x || 0, z: state.position_z || 0 };
-        }
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().trim();
+      const parsed = JSON.parse(text);
 
-        console.log(`[AI:${id}] ✅ ${parsed.action} | 💭 ${parsed.thought}`);
-        return parsed;
-
-      } catch (err) {
-        const is429 = err.code === 429 || err.message.includes('429');
-        const is402 = err.code === 402 || err.message.includes('402');
-        const is404 = err.code === 404 || err.message.includes('404');
-
-        if (is404) {
-          console.warn(`[AI] ${id} not found — skipping`);
-          break; // No point retrying a 404
-        }
-        if (is402) {
-          console.warn(`[AI] ${id} needs credits — trying next model`);
-          break;
-        }
-        if (is429 && attempt < maxRetries - 1) {
-          console.warn(`[AI] ${id} rate limited — waiting ${delayMs}ms before retry ${attempt + 2}/${maxRetries}`);
-          await sleep(delayMs);
-          continue;
-        }
-        console.warn(`[AI] ${id} attempt ${attempt + 1} failed:`, err.message.slice(0, 80));
-        if (attempt === maxRetries - 1) break;
+      // Resolve location coordinates
+      if (parsed.target_location && LOCATIONS[parsed.target_location]) {
+        parsed.target_position = LOCATIONS[parsed.target_location];
+      } else if (!parsed.target_position) {
+        parsed.target_position = { x: state.position_x || 0, z: state.position_z || 0 };
       }
+
+      console.log(`[AI:${modelName}] ✅ ${parsed.action} @ ${parsed.target_location} | 💭 ${parsed.thought}`);
+      return parsed;
+
+    } catch (err) {
+      const is429 = err.message?.includes('429') || err.message?.includes('quota');
+      const is404 = err.message?.includes('404') || err.message?.includes('not found');
+
+      if (is429) { console.warn(`[AI] ${modelName} quota hit — trying fallback...`); await sleep(2000); continue; }
+      if (is404) { console.warn(`[AI] ${modelName} not found — trying fallback...`); continue; }
+
+      console.error(`[AI] ${modelName} error:`, err.message?.slice(0, 120));
+      continue;
     }
   }
 
-  console.warn('[AI] All models failed — using fallback routine');
+  console.warn('[AI] All models failed — using smart fallback');
   return buildFallbackAction(state, weather);
 }
 
 function getRoutineHint(h, weather, state) {
-  if (weather === 'rainy' || weather === 'stormy') return 'Go inside immediately (running_to_shelter).';
-  if (state.energy < 15) return 'CRITICAL: Sleep at bed immediately.';
-  if (state.hunger > 85) return 'CRITICAL: Eat at table immediately.';
+  if (weather === 'rainy' || weather === 'stormy') return 'WEATHER: Go inside immediately (running_to_shelter to home).';
+  if (state.energy < 15) return 'CRITICAL: Energy too low — sleep at bed NOW.';
+  if (state.hunger > 85) return 'CRITICAL: Very hungry — eat at table NOW.';
   if (h >= 22 || h < 4.5)  return 'Sleep at bed.';
-  if (h >= 4.5 && h < 6)   return 'Wake up, morning prayer at prayer_spot.';
-  if (h >= 6 && h < 9)     return 'Water the fields (watering_crops at east_field).';
+  if (h >= 4.5 && h < 6)   return 'Wake up — morning prayer at prayer_spot (Fajr).';
+  if (h >= 6 && h < 6.5)   return 'Morning tea and breakfast at table.';
+  if (h >= 6.5 && h < 9)   return 'Water the east and west fields (watering_crops).';
   if (h >= 9 && h < 12)    return 'Chop wood at wood_stump.';
-  if (h >= 12 && h < 12.5) return 'Noon prayer at prayer_spot.';
+  if (h >= 12 && h < 12.5) return 'Noon prayer at prayer_spot (Dhuhr).';
   if (h >= 12.5 && h < 14) return 'Lunch at table.';
-  if (h >= 14 && h < 15.5) return 'Rest at home (sitting or sleeping).';
-  if (h >= 15.5 && h < 16) return 'Afternoon prayer at prayer_spot.';
+  if (h >= 14 && h < 15.5) return 'Rest at home (nap or sit).';
+  if (h >= 15.5 && h < 16) return 'Afternoon prayer at prayer_spot (Asr).';
   if (h >= 16 && h < 18.5) return 'Harvest or tend crops in the fields.';
-  if (h >= 18.5 && h < 19) return 'Sunset prayer at prayer_spot.';
+  if (h >= 18.5 && h < 19) return 'Sunset prayer at prayer_spot (Maghrib).';
   if (h >= 19 && h < 20)   return 'Dinner at table.';
   if (h >= 20 && h < 21)   return 'Sit outside at path_center and watch the stars.';
-  if (h >= 21 && h < 21.5) return 'Night prayer at prayer_spot.';
-  return 'Wind down, prepare for sleep.';
+  if (h >= 21 && h < 21.5) return 'Night prayer at prayer_spot (Isha).';
+  return 'Wind down and prepare for sleep.';
 }
 
 function buildFallbackAction(state, weather) {
   const h = parseFloat((state.world_time || '08:00').replace(':', '.'));
   let action = 'idle', loc = 'path_center';
 
-  if (h >= 22 || h < 4.5)  { action = 'sleeping';      loc = 'bed'; }
-  else if (h < 6)           { action = 'praying';        loc = 'prayer_spot'; }
-  else if (h < 9)           { action = 'watering_crops'; loc = 'east_field'; }
-  else if (h < 12)          { action = 'chopping_wood';  loc = 'wood_stump'; }
-  else if (h < 12.5)        { action = 'praying';        loc = 'prayer_spot'; }
-  else if (h < 14)          { action = 'eating';         loc = 'table'; }
-  else if (h < 15.5)        { action = 'sitting';        loc = 'home'; }
-  else if (h < 16)          { action = 'praying';        loc = 'prayer_spot'; }
-  else if (h < 18.5)        { action = 'harvesting';     loc = 'east_field'; }
-  else if (h < 19)          { action = 'praying';        loc = 'prayer_spot'; }
-  else if (h < 20)          { action = 'eating';         loc = 'table'; }
-  else if (h < 21)          { action = 'sitting';        loc = 'path_center'; }
-  else if (h < 21.5)        { action = 'praying';        loc = 'prayer_spot'; }
-  else                      { action = 'sleeping';        loc = 'bed'; }
-
   if (weather === 'rainy' || weather === 'stormy') { action = 'running_to_shelter'; loc = 'home'; }
-  if (state.energy < 15) { action = 'sleeping'; loc = 'bed'; }
-  if (state.hunger > 85) { action = 'eating';   loc = 'table'; }
+  else if (state.energy < 15) { action = 'sleeping'; loc = 'bed'; }
+  else if (state.hunger > 85) { action = 'eating';   loc = 'table'; }
+  else if (h >= 22 || h < 4.5) { action = 'sleeping';      loc = 'bed'; }
+  else if (h < 6)               { action = 'praying';        loc = 'prayer_spot'; }
+  else if (h < 6.5)             { action = 'eating';         loc = 'table'; }
+  else if (h < 9)               { action = 'watering_crops'; loc = 'east_field'; }
+  else if (h < 12)              { action = 'chopping_wood';  loc = 'wood_stump'; }
+  else if (h < 12.5)            { action = 'praying';        loc = 'prayer_spot'; }
+  else if (h < 14)              { action = 'eating';         loc = 'table'; }
+  else if (h < 15.5)            { action = 'sitting';        loc = 'home'; }
+  else if (h < 16)              { action = 'praying';        loc = 'prayer_spot'; }
+  else if (h < 18.5)            { action = 'harvesting';     loc = 'east_field'; }
+  else if (h < 19)              { action = 'praying';        loc = 'prayer_spot'; }
+  else if (h < 20)              { action = 'eating';         loc = 'table'; }
+  else if (h < 21)              { action = 'sitting';        loc = 'path_center'; }
+  else if (h < 21.5)            { action = 'praying';        loc = 'prayer_spot'; }
+  else                          { action = 'sleeping';        loc = 'bed'; }
 
   const pos = LOCATIONS[loc] || { x: 0, z: 0 };
   const thoughts = {
-    sleeping: 'Goodnight. More work awaits tomorrow.',
-    praying: 'Alhamdulillah, I am grateful.',
-    eating: 'A blessing to have food.',
-    watering_crops: 'The soil needs water.',
-    chopping_wood: 'Hard work builds character.',
-    harvesting: 'A good harvest, thanks be to God.',
-    sitting: 'A moment to breathe.',
-    walking: 'Fresh air clears the mind.',
-    running_to_shelter: 'The rain comes — better get inside.'
+    sleeping: 'Goodnight. There is more work tomorrow.',
+    praying: 'Alhamdulillah. I am grateful.',
+    eating: 'Food is a blessing from God.',
+    watering_crops: 'The soil is thirsty.',
+    chopping_wood: 'Hard work builds strength.',
+    harvesting: 'A good harvest, thank God.',
+    sitting: 'A moment of peace.',
+    running_to_shelter: 'The rain is coming — get inside!'
   };
 
   return {
