@@ -3,6 +3,8 @@ const { GEMINI_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
 
 if (!GEMINI_API_KEY || GEMINI_API_KEY === 'MISSING_KEY') {
   console.warn('[Gemini] ⚠️ WARNING: GEMINI_API_KEY is not set!');
+} else {
+  console.log('[Gemini] ✅ API Key loaded:', GEMINI_API_KEY.slice(0, 10) + '...');
 }
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -24,7 +26,23 @@ const LOCATIONS = {
   fence_north:  { x: 0,   z: 20   }
 };
 
-const MODELS = [PRIMARY_MODEL, FALLBACK_MODEL];
+// Try multiple model names — Gemini 2.0 Flash first, then 1.5
+const MODELS = [
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-flash-8b'
+];
+
+function extractJSON(text) {
+  // Strip markdown code fences if present
+  const stripped = text.replace(/```(?:json)?[\s\S]*?```/g, t =>
+    t.replace(/```(?:json)?/gi, '').replace(/```/g, '')
+  ).trim();
+  const match = stripped.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON in response');
+  return JSON.parse(match[0]);
+}
 
 async function askGemini(state, memories, weather) {
   const h = parseFloat((state.world_time || '08:00').replace(':', '.'));
@@ -32,36 +50,25 @@ async function askGemini(state, memories, weather) {
   const routineHint = getRoutineHint(h, weather, state);
 
   const prompt = `You are the autonomous AI brain of Arash, a 35-year-old village farmer.
-CRITICAL: Output ONLY raw JSON. No markdown. No code blocks. No explanation.
+Output ONLY a raw JSON object. No markdown, no explanation.
 
-CURRENT STATE:
-- Time: ${state.world_time} | Energy: ${state.energy}/100 | Hunger: ${state.hunger}/100
-- Action: ${state.current_action} | Mood: ${state.mood} | Weather: ${weather}
+STATE: Time ${state.world_time} | Energy ${state.energy}/100 | Hunger ${state.hunger}/100 | Weather: ${weather} | Mood: ${state.mood}
+ROUTINE: ${routineHint}
+MEMORIES: ${memText}
 
-ROUTINE NOW: ${routineHint}
+LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), prayer_spot(2,-4), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8)
+VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, running_to_shelter, sitting, praying, fishing, tending_animals, checking_motorcycle, wandering
 
-MEMORIES:
-${memText}
-
-LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), prayer_spot(2,-4), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8), fence_north(0,20)
-
-VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, running_to_shelter, sitting, praying, fishing, tending_animals, checking_motorcycle, wandering, tending_crops
-
-Output this exact JSON with your decision:
-{"action":"watering_crops","target_location":"east_field","target_position":{"x":10,"z":0},"duration":15,"energy_delta":-5,"hunger_delta":3,"new_mood":"content","memory":"Arash watered the east field crops.","thought":"The crops need water in this heat."}`;
+JSON format (copy this structure exactly):
+{"action":"eating","target_location":"table","target_position":{"x":0.5,"z":-0.5},"duration":15,"energy_delta":3,"hunger_delta":-15,"new_mood":"content","memory":"Arash ate breakfast.","thought":"Food gives me strength for the day."}`;
 
   for (const modelName of MODELS) {
     try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 300 }
-      });
-
+      const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent(prompt);
       const text = result.response.text().trim();
-      const parsed = JSON.parse(text);
+      const parsed = extractJSON(text);
 
-      // Resolve location coordinates
       if (parsed.target_location && LOCATIONS[parsed.target_location]) {
         parsed.target_position = LOCATIONS[parsed.target_location];
       } else if (!parsed.target_position) {
@@ -72,18 +79,22 @@ Output this exact JSON with your decision:
       return parsed;
 
     } catch (err) {
-      const is429 = err.message?.includes('429') || err.message?.includes('quota');
-      const is404 = err.message?.includes('404') || err.message?.includes('not found');
+      // Log FULL error for debugging
+      const msg = err.message || String(err);
+      console.error(`[AI] ${modelName} FULL ERROR:`, msg.slice(0, 200));
 
-      if (is429) { console.warn(`[AI] ${modelName} quota hit — trying fallback...`); await sleep(2000); continue; }
-      if (is404) { console.warn(`[AI] ${modelName} not found — trying fallback...`); continue; }
+      const is429 = msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate');
+      const is404 = msg.includes('404') || msg.toLowerCase().includes('not found');
+      const is403 = msg.includes('403') || msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('api key');
 
-      console.error(`[AI] ${modelName} error:`, err.message?.slice(0, 120));
+      if (is403) { console.error(`[AI] ❌ API KEY INVALID or API not enabled for project!`); break; }
+      if (is429) { console.warn(`[AI] ${modelName} rate limited — waiting 3s then trying next...`); await sleep(3000); continue; }
+      if (is404) { console.warn(`[AI] ${modelName} not found — trying next...`); continue; }
       continue;
     }
   }
 
-  console.warn('[AI] All models failed — using smart fallback');
+  console.warn('[AI] All models exhausted — using smart fallback');
   return buildFallbackAction(state, weather);
 }
 
@@ -133,7 +144,7 @@ function buildFallbackAction(state, weather) {
 
   const pos = LOCATIONS[loc] || { x: 0, z: 0 };
   const thoughts = {
-    sleeping: 'Goodnight. There is more work tomorrow.',
+    sleeping: 'Goodnight. Tomorrow brings more work.',
     praying: 'Alhamdulillah. I am grateful.',
     eating: 'Food is a blessing from God.',
     watering_crops: 'The soil is thirsty.',
