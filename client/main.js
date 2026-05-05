@@ -258,10 +258,18 @@ function animate() {
     controls.maxDistance = 70;
   }
 
-  // World clock: 1 real second = 0.5 world minutes (30 world min per real minute)
-  // This keeps client-side sky in sync with server ticks
-  worldHour += delta * (30 / 60);
+  // World clock: The server advances 30 game minutes (0.5 hours) every 1 real minute (60 seconds).
+  // Therefore, 1 real second = 0.5 / 60 world hours.
+  worldHour += delta * (0.5 / 60);
   if (worldHour >= 24) worldHour = 0;
+
+  // Smoothly update HUD time so user sees minutes passing
+  const currentH = Math.floor(worldHour);
+  const currentM = Math.floor((worldHour - currentH) * 60);
+  const timeStr = `${currentH.toString().padStart(2, '0')}:${currentM.toString().padStart(2, '0')}`;
+  if (window.hud && typeof window.hud.setTime === 'function') {
+    window.hud.setTime(timeStr, currentH);
+  }
   updateSky(worldHour);
 
   composer.render();
