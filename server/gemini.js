@@ -33,11 +33,10 @@ const LOCATIONS = {
   fence_north:  { x: 0,   z: 20   }
 };
 
-// gemini-1.5-flash: 1500 RPD free — perfect for 1440 daily ticks (1/min)
-// gemini-2.0-flash: only 200 RPD free — NOT enough for 1-min ticks
+// These models are supported on this specific API key
 const MODELS = [
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-001',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-3-flash-preview',
   'gemini-2.0-flash-lite',
 ];
 
