@@ -22,11 +22,7 @@ async function processDirective(message, state, memories) {
 
   const prompt = `You are the bridge between Arash's Creator (God) and Arash — a humble 35-year-old Persian Muslim farmer.
 
-The Creator has sent a directive. You must:
-1. Interpret it in Arash's world context
-2. Extract any SCHEDULED commands (specific times, recurring tasks)
-3. Generate Arash's humble, in-character response in Persian
-4. Return structured JSON
+The Creator has sent a DIRECTIVE. You must interpret it and extract any SCHEDULED tasks or IMMEDIATE commands.
 
 ARASH'S CURRENT STATE:
 - World Time: ${state.world_time}
@@ -43,45 +39,51 @@ CREATOR MESSAGE: "${message}"
 AVAILABLE ACTIONS: ${AVAILABLE_ACTIONS.join(', ')}
 AVAILABLE LOCATIONS: ${AVAILABLE_LOCATIONS.join(', ')}
 
-HOW TO PARSE SCHEDULE COMMANDS:
-- "sleep at 16:00" → directive: {time:"16:00", action:"sleeping", location:"bed", recurring:false, label:"Sleep at 4pm"}
-- "pray at 12:00 every day" → directive: {time:"12:00", action:"praying", location:"prayer_spot", recurring:true, label:"Daily noon prayer"}
-- "water crops at 6:30 from tomorrow" → directive: {time:"06:30", action:"watering_crops", location:"east_field", recurring:true, label:"Daily crop watering"}
-- "fish today at 15:00" → directive: {time:"15:00", action:"fishing", location:"fishing_spot", recurring:false, label:"Go fishing"}
-- "rest from 14:00 to 15:00" → directive: {time:"14:00", action:"sitting", location:"home", recurring:false, label:"Afternoon rest"}
-- "do nothing" or just chat → directives: []
+STRICT RULES FOR DIRECTIVES:
+1. "at HH:MM" or "at H pm/am" → Extract as a directive.
+2. "every day", "daily", "each night" → Set recurring: true.
+3. "now", "immediately", "right now" → Set immediate_action.
+4. "tomorrow" → Just set recurring: false (unless "every day" is also present).
+5. If the creator says "sleep at 10pm", translate 10pm to 22:00.
+6. If no specific time is mentioned, return directives: [].
 
-If message contains "immediately", "now", "right now" → set immediate:true and include the action.
-If no time commands found → directives: []
+DIRECTIVE EXAMPLES:
+- "Pray at 12:00 daily" → {time:"12:00", action:"praying", location:"prayer_spot", recurring:true, label:"Daily Noon Prayer"}
+- "Go to bed at 11pm tonight" → {time:"23:00", action:"sleeping", location:"bed", recurring:false, label:"Sleep at 11 PM"}
+- "Water crops at 06:30 every morning" → {time:"06:30", action:"watering_crops", location:"east_field", recurring:true, label:"Morning Watering"}
+- "Fish at 15:00 today" → {time:"15:00", action:"fishing", location:"fishing_spot", recurring:false, label:"Go Fishing"}
 
-Respond ONLY with this JSON (no markdown, no extra text):
+Respond ONLY with this JSON structure:
 {
-  "arash_response": "Arash's humble Persian response to the Creator (2-3 sentences, reverent tone)",
-  "memory": "Brief English note about this directive for Arash's memory log",
+  "arash_response": "Arash's humble Persian response (2 sentences, reverent tone)",
+  "memory": "Brief English note for Arash's memory log",
   "directives": [
     {
       "time": "HH:MM",
       "action": "action_name",
       "location": "location_name",
-      "recurring": true_or_false,
-      "label": "Brief English description (max 30 chars)"
+      "recurring": true,
+      "label": "Short description"
     }
   ],
-  "immediate_action": null
+  "immediate_action": { "action": "...", "location": "...", "thought": "Persian thought" } 
 }
 
-If immediate, set immediate_action to: {"action": "...", "location": "...", "thought": "Persian thought"}
-Otherwise set immediate_action to null.`;
+If no immediate action, set immediate_action to null.
+If no scheduled directives, set directives to [].`;
 
   for (const modelName of MODEL_CHAIN) {
     try {
       const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent(prompt);
       const text = result.response.text().trim();
+      
+      console.log(`[Director:${modelName}] Raw response:`, text);
+      
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('No JSON in response');
       const parsed = JSON.parse(jsonMatch[0]);
-      console.log(`[Director:${modelName}] Parsed ${parsed.directives?.length || 0} directives`);
+      console.log(`[Director:${modelName}] Parsed ${parsed.directives?.length || 0} directives, Immediate: ${parsed.immediate_action ? 'Yes' : 'No'}`);
       return parsed;
     } catch (err) {
       const is429 = err.message.includes('429') || err.message.includes('quota');
