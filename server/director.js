@@ -2,7 +2,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const MODEL_CHAIN = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+const MODEL_CHAIN = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const AVAILABLE_ACTIONS = [
@@ -28,30 +28,15 @@ ARASH'S CURRENT STATE:
 - World Time: ${state.world_time}
 - Energy: ${state.energy}/100
 - Hunger: ${state.hunger}/100
-- Current Action: ${state.current_action}
-- Mood: ${state.mood}
+- CURRENT ACTIVITY: ${state.current_action} (Arash is currently doing this)
+- MOOD: ${state.mood}
 
 RECENT MEMORIES:
 ${memText}
 
-CREATOR MESSAGE: "${message}"
+CREATOR MESSAGE (Directly to Arash): "${message}"
 
-AVAILABLE ACTIONS: ${AVAILABLE_ACTIONS.join(', ')}
-AVAILABLE LOCATIONS: ${AVAILABLE_LOCATIONS.join(', ')}
-
-STRICT RULES FOR DIRECTIVES:
-1. "at HH:MM" or "at H pm/am" → Extract as a directive.
-2. "every day", "daily", "each night" → Set recurring: true.
-3. "now", "immediately", "right now" → Set immediate_action.
-4. "tomorrow" → Just set recurring: false (unless "every day" is also present).
-5. If the creator says "sleep at 10pm", translate 10pm to 22:00.
-6. If no specific time is mentioned, return directives: [].
-
-DIRECTIVE EXAMPLES:
-- "Pray at 12:00 daily" → {time:"12:00", action:"praying", location:"prayer_spot", recurring:true, label:"Daily Noon Prayer"}
-- "Go to bed at 11pm tonight" → {time:"23:00", action:"sleeping", location:"bed", recurring:false, label:"Sleep at 11 PM"}
-- "Water crops at 06:30 every morning" → {time:"06:30", action:"watering_crops", location:"east_field", recurring:true, label:"Morning Watering"}
-- "Fish at 15:00 today" → {time:"15:00", action:"fishing", location:"fishing_spot", recurring:false, label:"Go Fishing"}
+Your goal is to have Arash respond in a way that reflects HIS CURRENT SITUATION. If he is tired, he should sound tired. If he is working, he should mention it. Arash sees the Creator with deep reverence.
 
 Respond ONLY with this JSON structure:
 {
