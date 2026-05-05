@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { GEMINI_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
+const { GEMINI_API_KEY } = require('./config');
 
 if (!GEMINI_API_KEY || GEMINI_API_KEY === 'MISSING_KEY') {
   console.warn('[Gemini] ⚠️ WARNING: GEMINI_API_KEY is not set!');
@@ -8,7 +8,6 @@ if (!GEMINI_API_KEY || GEMINI_API_KEY === 'MISSING_KEY') {
 }
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const LOCATIONS = {
   home:         { x: 0,   z: 0    },
@@ -26,12 +25,15 @@ const LOCATIONS = {
   fence_north:  { x: 0,   z: 20   }
 };
 
-// Try gemini-1.5-flash first (most stable free tier), then 2.0
+// Versioned model names work more reliably on free tier
 const MODELS = [
-  'gemini-1.5-flash',
   'gemini-2.0-flash',
-  'gemini-1.5-flash-latest',
+  'gemini-1.5-flash-001',
+  'gemini-1.5-flash-002',
 ];
+
+// Global concurrency lock — prevents overlapping AI calls eating rate limit
+let isAIBusy = false;
 
 function extractJSON(text) {
   const stripped = text.replace(/```(?:json)?[\s\S]*?```/g, t =>
@@ -43,6 +45,21 @@ function extractJSON(text) {
 }
 
 async function askGemini(state, memories, weather) {
+  // If AI is already running for a previous tick, skip and use fallback
+  if (isAIBusy) {
+    console.warn('[AI] Skipping tick — previous AI call still running. Using smart fallback.');
+    return buildFallbackAction(state, weather);
+  }
+
+  isAIBusy = true;
+  try {
+    return await _callGemini(state, memories, weather);
+  } finally {
+    isAIBusy = false;
+  }
+}
+
+async function _callGemini(state, memories, weather) {
   const h = parseFloat((state.world_time || '08:00').replace(':', '.'));
   const memText = memories.slice(0, 6).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No memories yet.';
   const routineHint = getRoutineHint(h, weather, state);
@@ -78,22 +95,31 @@ JSON format (copy this structure exactly):
 
     } catch (err) {
       const msg = err.message || String(err);
-      // Extract HTTP status code from error message
       const statusMatch = msg.match(/\[(\d{3})[^\]]*\]/);
       const statusCode = statusMatch ? parseInt(statusMatch[1]) : 0;
 
-      console.error(`[AI] ${modelName} error (HTTP ${statusCode}):`, msg.slice(0, 150));
+      console.error(`[AI] ${modelName} HTTP ${statusCode}:`, msg.slice(0, 120));
 
-      if (statusCode === 400) { console.error('[AI] ❌ Invalid API key or bad request — stopping'); break; }
-      if (statusCode === 403) { console.error('[AI] ❌ API not enabled or no permission — stopping'); break; }
-      if (statusCode === 429) { console.warn(`[AI] ${modelName} rate limited — waiting 4s...`); await sleep(4000); continue; }
-      if (statusCode === 404) { console.warn(`[AI] ${modelName} not found — skipping`); continue; }
-      // Generic error — try next
+      // Hard stop — invalid key or no API access
+      if (statusCode === 400 || statusCode === 403) {
+        console.error('[AI] ❌ API key invalid or API not enabled — using fallback permanently');
+        break;
+      }
+      // Rate limited — NO retry, skip to next model or fallback immediately
+      if (statusCode === 429) {
+        console.warn(`[AI] ${modelName} rate limited — trying next model immediately (no wait)`);
+        continue;
+      }
+      // Model not found — try next
+      if (statusCode === 404) {
+        console.warn(`[AI] ${modelName} not found — trying next`);
+        continue;
+      }
       continue;
     }
   }
 
-  console.warn('[AI] All models exhausted — using smart fallback');
+  console.warn('[AI] All models exhausted — using smart fallback for this tick');
   return buildFallbackAction(state, weather);
 }
 
@@ -102,18 +128,18 @@ function getRoutineHint(h, weather, state) {
   if (state.energy < 15) return 'CRITICAL: Energy too low — sleep at bed NOW.';
   if (state.hunger > 85) return 'CRITICAL: Very hungry — eat at table NOW.';
   if (h >= 22 || h < 4.5)  return 'Sleep at bed.';
-  if (h >= 4.5 && h < 6)   return 'Wake up — morning prayer at prayer_spot (Fajr).';
-  if (h >= 6 && h < 6.5)   return 'Morning tea and breakfast at table.';
-  if (h >= 6.5 && h < 9)   return 'Water the east and west fields (watering_crops).';
+  if (h >= 4.5 && h < 6)   return 'Morning prayer at prayer_spot (Fajr).';
+  if (h >= 6 && h < 6.5)   return 'Breakfast at table.';
+  if (h >= 6.5 && h < 9)   return 'Water the fields (watering_crops at east_field).';
   if (h >= 9 && h < 12)    return 'Chop wood at wood_stump.';
   if (h >= 12 && h < 12.5) return 'Noon prayer at prayer_spot (Dhuhr).';
   if (h >= 12.5 && h < 14) return 'Lunch at table.';
-  if (h >= 14 && h < 15.5) return 'Rest at home (nap or sit).';
+  if (h >= 14 && h < 15.5) return 'Rest at home.';
   if (h >= 15.5 && h < 16) return 'Afternoon prayer at prayer_spot (Asr).';
-  if (h >= 16 && h < 18.5) return 'Harvest or tend crops in the fields.';
+  if (h >= 16 && h < 18.5) return 'Harvest crops in the fields.';
   if (h >= 18.5 && h < 19) return 'Sunset prayer at prayer_spot (Maghrib).';
   if (h >= 19 && h < 20)   return 'Dinner at table.';
-  if (h >= 20 && h < 21)   return 'Sit outside at path_center and watch the stars.';
+  if (h >= 20 && h < 21)   return 'Sit outside at path_center.';
   if (h >= 21 && h < 21.5) return 'Night prayer at prayer_spot (Isha).';
   return 'Wind down and prepare for sleep.';
 }
