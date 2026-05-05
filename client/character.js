@@ -69,28 +69,51 @@ export class Villager {
   }
 
   _buildSprite() {
-    // Create a plane that always faces camera (billboard)
-    const geo = new THREE.PlaneGeometry(1.4, 2.2);
-    const mat = new THREE.MeshBasicMaterial({
+    const geo = new THREE.PlaneGeometry(1.6, 2.4);
+
+    // Custom shader: discards white and near-white pixels
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: null }, opacity: { value: 1.0 } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D map;
+        uniform float opacity;
+        varying vec2 vUv;
+        void main() {
+          vec4 c = texture2D(map, vUv);
+          // Discard pixels that are white or near-white (background removal)
+          float brightness = dot(c.rgb, vec3(0.333));
+          if (brightness > 0.88 && c.r > 0.80 && c.g > 0.80 && c.b > 0.80) discard;
+          gl_FragColor = vec4(c.rgb, opacity);
+        }
+      `,
       transparent: true,
-      alphaTest: 0.15,  // cut out the white background
       side: THREE.DoubleSide,
       depthWrite: false,
     });
+
     this.spriteMesh = new THREE.Mesh(geo, mat);
-    this.spriteMesh.position.y = 1.1; // raise to stand on ground
+    this.spriteMesh.position.y = 1.2;
+    // Exclude from bloom layer
+    this.spriteMesh.layers.disable(1);
     this.root.add(this.spriteMesh);
 
     this._setTexture('idle');
-    console.log('[Villager] Sprite character ready');
+    console.log('[Villager] Sprite ready with white-removal shader');
   }
 
   _setTexture(action) {
     const url = SPRITE_MAP[action] || SPRITE_MAP['idle'];
     const tex = this.textures[url];
     if (!tex || !this.spriteMesh) return;
-    if (this.spriteMesh.material.map === tex) return; // already set
-    this.spriteMesh.material.map = tex;
+    if (this.spriteMesh.material.uniforms.map.value === tex) return;
+    this.spriteMesh.material.uniforms.map.value = tex;
     this.spriteMesh.material.needsUpdate = true;
   }
 
