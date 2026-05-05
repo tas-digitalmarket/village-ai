@@ -8,7 +8,14 @@ if (!GEMINI_API_KEY || GEMINI_API_KEY === 'MISSING_KEY') {
 }
 
 // Use v1 (stable) instead of v1beta — fixes 404 on gemini-1.5-flash
+// SDK 0.24.0+ supports apiVersion option
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY, { apiVersion: 'v1' });
+
+// Log startup to verify which SDK version is loaded
+const sdkVersion = (() => {
+  try { return require('@google/generative-ai/package.json').version; } catch(e) { return 'unknown'; }
+})();
+console.log('[Gemini] SDK version:', sdkVersion);
 
 const LOCATIONS = {
   home:         { x: 0,   z: 0    },
