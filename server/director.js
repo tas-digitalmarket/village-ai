@@ -48,7 +48,7 @@ If no scheduled directives, set directives to [].`;
 
   const models = [
     OPENROUTER_MODEL, 
-    'google/gemini-flash-1.5',
+    'meta-llama/llama-3.1-8b-instruct:free',
     'google/gemma-2-9b-it:free',
     'mistralai/mistral-7b-instruct:free'
   ];
