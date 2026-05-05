@@ -1,18 +1,11 @@
-// director.js — Creator ↔ Arash communication via Gemini
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'MISSING_KEY');
+const { GEMINI_API_KEY, OPENROUTER_MODEL, OPENROUTER_FALLBACK } = require('./config');
 
-if (!process.env.GEMINI_API_KEY) {
-  console.warn('[Director] ⚠️ WARNING: GEMINI_API_KEY is not set!');
-}
-
-const MODEL_CHAIN = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const AVAILABLE_ACTIONS = [
-  'idle', 'walking', 'chopping_wood', 'watering_crops', 'harvesting',
-  'eating', 'sleeping', 'running_to_shelter', 'sitting', 'praying',
-  'fishing', 'tending_animals', 'checking_motorcycle', 'wandering', 'tending_crops'
+  'idle', 'walking', 'chopping_wood', 'watering_crops', 'harvesting', 'eating',
+  'sleeping', 'running_to_shelter', 'sitting', 'praying', 'fishing', 'tending_animals',
+  'checking_motorcycle', 'wandering', 'tending_crops'
 ];
 
 const AVAILABLE_LOCATIONS = [
@@ -24,28 +17,21 @@ const AVAILABLE_LOCATIONS = [
 async function processDirective(message, state, memories) {
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n');
 
-  const prompt = `You are the bridge between Arash's Creator (God) and Arash — a humble 35-year-old Persian Muslim farmer.
-
-The Creator has sent a DIRECTIVE. You must interpret it and extract any SCHEDULED tasks or IMMEDIATE commands.
+  const prompt = `You are the bridge between Arash's Creator (God) and Arash — a humble 35-year-old village farmer.
+The Creator has sent a DIRECTIVE: "${message}"
 
 ARASH'S CURRENT STATE:
 - World Time: ${state.world_time}
-- Energy: ${state.energy}/100
-- Hunger: ${state.hunger}/100
-- CURRENT ACTIVITY: ${state.current_action} (Arash is currently doing this)
+- CURRENT ACTIVITY: ${state.current_action}
 - MOOD: ${state.mood}
 
-RECENT MEMORIES:
-${memText}
-
-CREATOR MESSAGE (Directly to Arash): "${message}"
-
-Your goal is to have Arash respond in a way that reflects HIS CURRENT SITUATION. If he is tired, he should sound tired. If he is working, he should mention it. Arash sees the Creator with deep reverence.
+Your goal: Extract SCHEDULED tasks or IMMEDIATE commands.
+Arash MUST respond ONLY in English. NO PERSIAN.
 
 Respond ONLY with this JSON structure:
 {
-  "arash_response": "Arash's humble Persian response (2 sentences, reverent tone)",
-  "memory": "Brief English note for Arash's memory log",
+  "arash_response": "Arash's humble response in ENGLISH",
+  "memory": "Brief English note for memory log",
   "directives": [
     {
       "time": "HH:MM",
@@ -55,39 +41,49 @@ Respond ONLY with this JSON structure:
       "label": "Short description"
     }
   ],
-  "immediate_action": { "action": "...", "location": "...", "thought": "Persian thought" } 
+  "immediate_action": { "action": "...", "location": "...", "thought": "English thought" } 
 }
-
 If no immediate action, set immediate_action to null.
 If no scheduled directives, set directives to [].`;
 
-  for (const modelName of MODEL_CHAIN) {
+  const models = [OPENROUTER_MODEL, OPENROUTER_FALLBACK, 'google/gemma-2-9b-it'];
+
+  for (const modelName of models) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(prompt);
-      const text = result.response.text().trim();
-      
-      console.log(`[Director:${modelName}] Raw response:`, text);
-      
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON in response');
-      const parsed = JSON.parse(jsonMatch[0]);
-      console.log(`[Director:${modelName}] Parsed ${parsed.directives?.length || 0} directives, Immediate: ${parsed.immediate_action ? 'Yes' : 'No'}`);
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GEMINI_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://village-ai.render.com',
+          'X-Title': 'Village AI'
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`OpenRouter Error: ${response.status} - ${error}`);
+      }
+
+      const data = await response.json();
+      const text = data.choices[0].message.content.trim();
+      const parsed = JSON.parse(text);
       return parsed;
+
     } catch (err) {
-      const is429 = err.message.includes('429') || err.message.includes('quota');
-      const is404 = err.message.includes('404') || err.message.includes('not found');
-      if (is429) { console.warn(`[Director] ${modelName} quota — trying next...`); await sleep(2000); continue; }
-      if (is404) { console.warn(`[Director] ${modelName} not found — trying next...`); continue; }
-      console.error(`[Director] ${modelName} error:`, err.message.slice(0, 120));
-      break;
+      console.warn(`[Director] ${modelName} failed:`, err.message.slice(0, 100));
+      await sleep(1000);
+      continue;
     }
   }
 
-  // Fallback response if all models fail
-  console.error(`[Director] All models in chain failed to respond for message: "${message}"`);
   return {
-    arash_response: 'خالقم، در حال حاضر کمی سردرگم هستم، اما سخنت را در قلبم نگاه می‌دارم. (Gemini API Error)',
+    arash_response: 'Yes, my Creator. I have heard your voice and will obey. (OpenRouter Error)',
     memory: `Creator message received but AI processing failed: ${message.slice(0, 40)}`,
     directives: [],
     immediate_action: null
