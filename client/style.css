@@ -47,13 +47,75 @@ body {
 #hud {
   position: fixed;
   inset: 0;
-  padding: 24px;
+  padding: 16px;
   z-index: 10;
   pointer-events: none;
   display: grid;
-  grid-template-columns: 320px 1fr 320px;
+  grid-template-columns: 300px 1fr 300px;
   grid-template-rows: auto 1fr auto;
-  gap: 20px;
+  gap: 16px;
+}
+
+/* ---- Mobile Layout ---- */
+@media (max-width: 700px) {
+  #hud {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    padding: 8px;
+    gap: 8px;
+    overflow-y: auto;
+    align-content: start;
+  }
+
+  #hud-left {
+    grid-column: 1;
+    grid-row: 1;
+    max-height: none;
+  }
+
+  #hud-center {
+    grid-column: 1;
+    grid-row: 2;
+    justify-content: flex-start;
+  }
+
+  #hud-right {
+    display: none;
+  }
+
+  #conn-status {
+    top: 8px;
+    right: 8px;
+    font-size: 0.65rem;
+  }
+
+  #creator-toggle {
+    bottom: 16px;
+    right: 16px;
+    width: 48px;
+    height: 48px;
+  }
+
+  #creator-panel {
+    bottom: 76px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+    height: 420px;
+  }
+
+  .hud-card {
+    padding: 14px;
+  }
+
+  .hud-title {
+    font-size: 1.25rem;
+    margin-bottom: 14px;
+  }
+
+  .schedule-container {
+    max-height: 220px;
+  }
 }
 
 /* Left Column: Status & Schedule */

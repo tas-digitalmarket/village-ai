@@ -23,6 +23,7 @@ function initDatabase() {
       current_action: 'idle',
       weather: 'sunny',
       world_time: '06:00',
+      day: 1,
       mood: 'content',
       timestamp: new Date().toISOString()
     },

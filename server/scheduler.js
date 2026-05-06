@@ -131,6 +131,18 @@ async function runTick(broadcast) {
       decision = await askGemini(state, memories, weather);
     }
 
+    const prevTime = state.world_time || '06:00';
+    const [prevH] = prevTime.split(':').map(Number);
+    const [newH]  = newWorldTime.split(':').map(Number);
+    // Crossed midnight: previous hour was late (>=22) and new hour is early (0 or 1)
+    const crossedMidnight = prevH >= 22 && newH <= 1;
+    const currentDay = state.day || 1;
+    const newDay = crossedMidnight ? currentDay + 1 : currentDay;
+
+    if (crossedMidnight) {
+      console.log(`[Scheduler] 🌅 New day! Day ${newDay} begins.`);
+    }
+
     const newState = {
       position_x: decision.target_position?.x ?? state.position_x ?? 0,
       position_y: 0,
@@ -140,6 +152,7 @@ async function runTick(broadcast) {
       current_action: decision.action || 'idle',
       weather,
       world_time: newWorldTime,
+      day: newDay,
       mood: decision.new_mood || state.mood || 'content'
     };
 

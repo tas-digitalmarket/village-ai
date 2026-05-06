@@ -54,9 +54,22 @@ const fillLight = new THREE.DirectionalLight(0x8899cc, 0.4);
 fillLight.position.set(-15, 10, -10);
 scene.add(fillLight);
 
-const moonLight = new THREE.DirectionalLight(0x334466, 0.0);
+const moonLight = new THREE.DirectionalLight(0x4466aa, 0.0);
 moonLight.position.set(-20, 25, -10);
 scene.add(moonLight);
+
+// ── Night lamp inside house (warm bedside glow) ───────────────
+const nightLamp = new THREE.PointLight(0xff9944, 0.0, 8, 1.5);
+nightLamp.position.set(-2.5, 1.8, -9.0); // near the bed
+scene.add(nightLamp);
+
+// Small emissive lamp mesh
+const lampMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(0.07, 6, 6),
+  new THREE.MeshStandardMaterial({ color: 0xff9944, emissive: 0xff9944, emissiveIntensity: 0 })
+);
+lampMesh.position.copy(nightLamp.position);
+scene.add(lampMesh);
 
 // ── Post-processing ───────────────────────────────────────────
 const composer = new EffectComposer(renderer);
@@ -81,10 +94,10 @@ const creator = new CreatorPanel((directives) => hud.updateSchedule(directives))
 let worldHour = 6;
 
 const SKY_PRESETS = {
-  night: { sky: 0x020510, fog: 0x0a0a1a, sun: 0.0, amb: 0.08,  hemi: 0.1,  moon: 0.5 },
-  dawn:  { sky: 0x1a2a6c, fog: 0xd4622a, sun: 0.7, amb: 0.25,  hemi: 0.35, moon: 0.0 },
-  day:   { sky: 0x5ba3d9, fog: 0x87ceeb, sun: 2.0, amb: 0.55,  hemi: 0.65, moon: 0.0 },
-  dusk:  { sky: 0x1a1a4a, fog: 0xc0581a, sun: 0.5, amb: 0.2,   hemi: 0.3,  moon: 0.0 },
+  night: { sky: 0x050d1e, fog: 0x0a0f1a, sun: 0.0, amb: 0.28, hemi: 0.22, moon: 0.80 },
+  dawn:  { sky: 0x1a2a6c, fog: 0xd4622a, sun: 0.7, amb: 0.25, hemi: 0.35, moon: 0.0  },
+  day:   { sky: 0x5ba3d9, fog: 0x87ceeb, sun: 2.0, amb: 0.55, hemi: 0.65, moon: 0.0  },
+  dusk:  { sky: 0x1a1a4a, fog: 0xc0581a, sun: 0.5, amb: 0.2,  hemi: 0.3,  moon: 0.0  },
 };
 
 function lerpPreset(a, b, t) {
@@ -117,6 +130,12 @@ function updateSky(hour) {
   hemiLight.intensity = p.hemi;
   moonLight.intensity = p.moon;
 
+  // Night lamp: glow inside house when dark (after 21:00 or before 6:00)
+  const isNight = hour > 21 || hour < 6;
+  const lampStr = isNight ? 1.8 : 0.0;
+  nightLamp.intensity = lampStr;
+  if (lampMesh.material) lampMesh.material.emissiveIntensity = isNight ? 2.0 : 0.0;
+
   const isDusk = hour > 17.5 && hour < 21;
   const isDawn = hour > 5 && hour < 9;
   bloom.strength = (isDusk || isDawn) ? 0.45 : 0.18;
@@ -132,7 +151,7 @@ function updateSky(hour) {
   const angle = ((hour - 6) / 12) * Math.PI;
   sunLight.position.set(Math.cos(angle)*35, Math.max(2, Math.sin(angle)*35), 15);
   moonLight.position.set(-Math.cos(angle)*25, Math.max(2, -Math.sin(angle)*25), -10);
-  renderer.toneMappingExposure = hour >= 6 && hour <= 18 ? 1.2 : 0.6;
+  renderer.toneMappingExposure = hour >= 6 && hour <= 18 ? 1.2 : 0.85;
 }
 
 // ── WebSocket with auto-reconnect ────────────────────────────

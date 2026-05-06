@@ -57,18 +57,27 @@ export class HUD {
 
     this._dayCount   = 1;
     this._startHour  = 6;
+    this._lastHour   = -1;
   }
 
   setTime(timeStr, hour) {
     if (this.$time) this.$time.textContent = timeStr;
-    // Day tracker: each complete cycle past midnight = new day
-    if (hour === 0) this._dayCount++;
+    // Fallback day counter: only increment once per midnight crossing
+    if (this._lastHour !== -1 && this._lastHour > 20 && hour === 0) {
+      this._dayCount++;
+    }
+    this._lastHour = hour;
     if (this.$day) this.$day.textContent = `Day ${this._dayCount}`;
   }
 
   update(data) {
-    const { energy, hunger, current_action, weather, mood, thought, memories } = data;
+    const { energy, hunger, current_action, weather, mood, thought, memories, day } = data;
 
+    // Use server-provided day count if available
+    if (day !== undefined && day !== null && day > 0) {
+      this._dayCount = day;
+    }
+    if (this.$day) this.$day.textContent = `Day ${this._dayCount}`;
     // Energy bar
     const energyPct = energy ?? 0;
     if (this.$energyBar) {

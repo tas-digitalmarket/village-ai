@@ -16,6 +16,12 @@ const TOOL_LOCATIONS = {
   wood_stump:   {x:-3.0, z:3.5},
 };
 
+// ── Indoor Positions (cottage is at 0,0,-8) ─────────────────
+const INSIDE_BED    = { x: -2.5, z: -9.5 }; // bed inside house
+const INSIDE_TABLE  = { x:  2.2, z: -9.0 }; // table inside house
+const INSIDE_CENTER = { x:  0.0, z: -8.5 }; // center of house
+const HOUSE_DOOR    = { x:  0.0, z: -5.5 }; // just inside the door
+
 const CHOP_POSITIONS = [
   {x:-3.0,z:3.5},{x:-3.5,z:3.2},{x:-2.5,z:3.8}
 ];
@@ -228,6 +234,22 @@ export class Villager {
           this.microTasks.push({type:'walk',    pos:p});
           this.microTasks.push({type:'tend',    duration:2.0});
         });
+        break;
+      }
+      case 'sleeping': {
+        this.microTasks.push({type:'walk', pos: HOUSE_DOOR});
+        this.microTasks.push({type:'walk', pos: INSIDE_BED});
+        break;
+      }
+      case 'eating': {
+        this.microTasks.push({type:'walk', pos: HOUSE_DOOR});
+        this.microTasks.push({type:'walk', pos: INSIDE_TABLE});
+        break;
+      }
+      case 'sitting':
+      case 'praying': {
+        this.microTasks.push({type:'walk', pos: HOUSE_DOOR});
+        this.microTasks.push({type:'walk', pos: INSIDE_CENTER});
         break;
       }
     }
