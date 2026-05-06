@@ -274,6 +274,7 @@ export class Villager {
       case 'sitting': {
         this.microTasks.push({type:'walk', pos: HOUSE_DOOR});
         this.microTasks.push({type:'walk', pos: INSIDE_BED});
+        this.microTasks.push({type:'sit_pose', duration: 1.0});
         break;
       }
     }
@@ -346,23 +347,33 @@ export class Villager {
         break;
       case 'wipe': {
         // Wiping motion — left arm scrubs side to side, right steadies
-        const sw = Math.sin(t * 5);
-        if (p.lUpperArm) p.lUpperArm.rotation.x = -0.8;
-        if (p.lUpperArm) p.lUpperArm.rotation.z =  0.3 + sw * 0.5;
-        if (p.lArm)      p.lArm.rotation.x      = -0.5 + sw * 0.2;
-        if (p.rUpperArm) p.rUpperArm.rotation.x = -0.4;
-        if (p.torso)     p.torso.rotation.y      =  sw * 0.15;
+        const sw = Math.sin(t * 7); // Faster scrub
+        const scrub = Math.cos(t * 7);
+        if (p.lUpperArm) p.lUpperArm.rotation.x = -0.9 + scrub * 0.2;
+        if (p.lUpperArm) p.lUpperArm.rotation.z =  0.4 + sw * 0.4;
+        if (p.lArm)      p.lArm.rotation.x      = -0.6 + sw * 0.3;
+        if (p.rUpperArm) p.rUpperArm.rotation.x = -0.5;
+        if (p.torso)     p.torso.rotation.y      =  sw * 0.12;
         break;
       }
+      case 'sit_pose':
+        if (p.lLeg) p.lLeg.rotation.x = 0.85;
+        if (p.rLeg) p.rLeg.rotation.x = 0.85;
+        if (p.hips) p.hips.position.y = 0.45;
+        if (p.torso) p.torso.rotation.x = 0.1;
+        break;
     }
 
     if (macro === 'sleeping') {
       this.root.rotation.x = -Math.PI/2;
-      this.root.position.y = 0.55;
+      this.root.position.y = 0.98; // On top of bed mattress (0.91)
+      this.root.position.z -= 0.85; // Shift to center body on bed (pivot is at feet)
     } else if (macro === 'sitting') {
-      if (p.lLeg) p.lLeg.rotation.x = 0.8;
-      if (p.rLeg) p.rLeg.rotation.x = 0.8;
-      if (p.hips) p.hips.position.y = 0.5;
+      if (p.lLeg) p.lLeg.rotation.x = 0.85;
+      if (p.rLeg) p.rLeg.rotation.x = 0.85;
+      if (p.hips) p.hips.position.y = 0.45;
+      if (p.torso) p.torso.rotation.x = 0.1;
+      this.root.position.y = 0.45;
     }
   }
 
@@ -371,8 +382,15 @@ export class Villager {
     if (data.position_x !== undefined) {
       const x = data.position_x ?? 0;
       const z = data.position_z ?? 0;
-      if (this.microTasks.length === 0 && !this.currentMicroTask) {
-        this.targetPos.set(x, 0, z);
+      // Priority check: if he is doing a macro that requires indoor walking, don't let server-state override targetPos
+      // until the micro-tasks (navigation to bed/table) are complete.
+      const isIndoorMacro = ['sleeping', 'eating', 'sitting'].includes(data.current_action);
+      const isExecutingPath = this.microTasks.length > 0 || this.currentMicroTask?.type === 'walk';
+
+      if (!isIndoorMacro || !isExecutingPath) {
+        if (this.microTasks.length === 0 && !this.currentMicroTask) {
+          this.targetPos.set(x, 0, z);
+        }
       }
       if (!this.initialized) {
         this.currentPos.set(x, 0, z);

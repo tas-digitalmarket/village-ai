@@ -129,7 +129,7 @@ async function runTick(broadcast) {
         firedDirectives.clear();
         console.log('[Scheduler] 🌅 New day — recurring directives reset');
       }
-      decision = await askGemini(state, memories, weather);
+      decision = await askGemini(state, memories, weather, newWorldTime);
     }
 
     const prevTime = state.world_time || '06:00';

@@ -51,30 +51,33 @@ function extractJSON(text) {
   return JSON.parse(match[0]);
 }
 
-async function askGemini(state, memories, weather) {
+async function askGemini(state, memories, weather, overrideTime) {
   // If AI is already running for a previous tick, skip and use fallback
   if (isAIBusy) {
     console.warn('[AI] Skipping tick — previous AI call still running. Using smart fallback.');
-    return buildFallbackAction(state, weather);
+    return buildFallbackAction(state, weather, overrideTime);
   }
 
   isAIBusy = true;
   try {
-    return await _callGemini(state, memories, weather);
+    return await _callGemini(state, memories, weather, overrideTime);
   } finally {
     isAIBusy = false;
   }
 }
 
-async function _callGemini(state, memories, weather) {
-  const h = parseFloat((state.world_time || '08:00').replace(':', '.'));
+async function _callGemini(state, memories, weather, overrideTime) {
+  const timeStr = overrideTime || state.world_time || '08:00';
+  const [hh, mm] = timeStr.split(':').map(Number);
+  const h = hh + (mm / 60);
+
   const memText = memories.slice(0, 6).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No memories yet.';
   const routineHint = getRoutineHint(h, weather, state);
 
   const prompt = `You are the autonomous AI brain of Arash, a 35-year-old village farmer.
 Output ONLY a raw JSON object. No markdown, no explanation.
 
-STATE: Time ${state.world_time} | Energy ${state.energy}/100 | Hunger ${state.hunger}/100 | Weather: ${weather} | Mood: ${state.mood}
+STATE: Time ${timeStr} | Energy ${state.energy}/100 | Hunger ${state.hunger}/100 | Weather: ${weather} | Mood: ${state.mood}
 ROUTINE: ${routineHint}
 MEMORIES: ${memText}
 
@@ -131,47 +134,56 @@ JSON format (copy this structure exactly):
 }
 
 function getRoutineHint(h, weather, state) {
-  if (weather === 'rainy' || weather === 'stormy') return 'WEATHER: Go inside immediately (running_to_shelter to home).';
+  const isInside = state.position_z < -5;
+  if ((weather === 'rainy' || weather === 'stormy') && !isInside) {
+    return 'WEATHER: It is raining! Go inside immediately (running_to_shelter to home).';
+  }
   if (state.energy < 15) return 'CRITICAL: Energy too low — sleep at bed NOW.';
   if (state.hunger > 85) return 'CRITICAL: Very hungry — eat at table NOW.';
-  if (h >= 22 || h < 8)   return 'Sleep at bed.';
-  if (h >= 8 && h < 8.5)  return 'Wake up and have breakfast at table.';
-  if (h >= 8.5 && h < 9)  return 'Morning routine at home.';
-  if (h >= 9 && h < 10.5) return 'Water the fields (watering_crops at east_field).';
+  if (h >= 22 || h < 8)    return 'Sleep at bed.';
+  if (h >= 8 && h < 8.5)   return 'Wake up and have breakfast at table.';
+  if (h >= 8.5 && h < 9)   return 'Morning routine at home.';
+  if (h >= 9 && h < 10.5)  return 'Water the fields (watering_crops at east_field).';
   if (h >= 10.5 && h < 12) return 'Chop wood at wood_stump.';
   if (h >= 12 && h < 12.5) return 'Lunch at table.';
   if (h >= 12.5 && h < 13.5) return 'Rest after lunch (sitting at bed).';
   if (h >= 13.5 && h < 15) return 'Tend and care for crops in the fields.';
-  if (h >= 15 && h < 16)  return 'Check and clean motorcycle at motorcycle area.';
+  if (h >= 15 && h < 16)   return 'Check and clean motorcycle at motorcycle area.';
   if (h >= 16 && h < 17.5) return 'Harvest crops in the fields.';
   if (h >= 17.5 && h < 18.5) return 'Wander the farm, enjoy the evening air.';
   if (h >= 18.5 && h < 19.5) return 'Dinner at table.';
   if (h >= 19.5 && h < 21) return 'Evening rest at home (sitting at bed).';
-  if (h >= 21 && h < 22)  return 'Evening stroll around the farm (wandering).';
+  if (h >= 21 && h < 22)   return 'Evening stroll around the farm (wandering).';
   return 'Wind down and prepare for sleep.';
 }
 
-function buildFallbackAction(state, weather) {
-  const h = parseFloat((state.world_time || '08:00').replace(':', '.'));
+function buildFallbackAction(state, weather, overrideTime) {
+  const timeStr = overrideTime || state.world_time || '08:00';
+  const [hh, mm] = timeStr.split(':').map(Number);
+  const h = hh + (mm / 60);
+  const isInside = state.position_z < -5;
+
   let action = 'idle', loc = 'path_center';
 
-  if (weather === 'rainy' || weather === 'stormy') { action = 'running_to_shelter'; loc = 'home'; }
+  if ((weather === 'rainy' || weather === 'stormy') && !isInside) {
+    action = 'running_to_shelter'; loc = 'home';
+  }
   else if (state.energy < 15) { action = 'sleeping';          loc = 'bed'; }
   else if (state.hunger > 85) { action = 'eating';            loc = 'table'; }
-  else if (h >= 22 || h < 8) { action = 'sleeping';           loc = 'bed'; }
-  else if (h < 8.5)          { action = 'eating';             loc = 'table'; }
-  else if (h < 9)            { action = 'idle';               loc = 'home'; }
-  else if (h < 10.5)         { action = 'watering_crops';     loc = 'east_field'; }
-  else if (h < 12)           { action = 'chopping_wood';      loc = 'wood_stump'; }
-  else if (h < 12.5)         { action = 'eating';             loc = 'table'; }
-  else if (h < 13.5)         { action = 'sitting';            loc = 'bed'; }
-  else if (h < 15)           { action = 'tending_crops';      loc = 'west_field'; }
-  else if (h < 16)           { action = 'checking_motorcycle'; loc = 'motorcycle'; }
-  else if (h < 17.5)         { action = 'harvesting';         loc = 'east_field'; }
-  else if (h < 18.5)         { action = 'wandering';          loc = 'path_center'; }
-  else if (h < 19.5)         { action = 'eating';             loc = 'table'; }
-  else if (h < 21)           { action = 'sitting';            loc = 'bed'; }
-  else                       { action = 'wandering';           loc = 'fence_north'; }
+  else if (h >= 22 || h < 8)  { action = 'sleeping';           loc = 'bed'; }
+  else if (h < 8.5)           { action = 'eating';             loc = 'table'; }
+  else if (h < 9)             { action = 'idle';               loc = 'home'; }
+  else if (h < 10.5)          { action = 'watering_crops';     loc = 'east_field'; }
+  else if (h < 12)            { action = 'chopping_wood';      loc = 'wood_stump'; }
+  else if (h < 12.5)          { action = 'eating';             loc = 'table'; }
+  else if (h < 13.5)          { action = 'sitting';            loc = 'bed'; }
+  else if (h < 15)            { action = 'tending_crops';      loc = 'west_field'; }
+  else if (h < 16)            { action = 'checking_motorcycle'; loc = 'motorcycle'; }
+  else if (h < 17.5)          { action = 'harvesting';         loc = 'east_field'; }
+  else if (h < 18.5)          { action = 'wandering';          loc = 'path_center'; }
+  else if (h < 19.5)          { action = 'eating';             loc = 'table'; }
+  else if (h < 21)            { action = 'sitting';            loc = 'bed'; }
+  else                        { action = 'wandering';           loc = 'fence_north'; }
 
   const pos = LOCATIONS[loc] || { x: 0, z: 0 };
   const thoughts = {

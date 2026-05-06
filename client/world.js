@@ -174,15 +174,15 @@ function buildInterior(scene, x, y, z) {
   const handleMat      = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.25, metalness: 0.85 });
 
   // Body
-  addMesh(scene, new THREE.BoxGeometry(0.68, 1.45, 0.58), fridgeBodyMat, x+2.8, y+0.725, z-2.0);
+  addMesh(scene, new THREE.BoxGeometry(0.68, 1.45, 0.58), fridgeBodyMat, x+3.2, y+0.725, z-2.2);
   // Front door panel (slightly proud of body)
-  addMesh(scene, new THREE.BoxGeometry(0.62, 1.40, 0.03), fridgeDoorMat, x+2.8, y+0.725, z-2.0+0.305);
+  addMesh(scene, new THREE.BoxGeometry(0.62, 1.40, 0.03), fridgeDoorMat, x+3.2, y+0.725, z-2.2+0.305);
   // Freezer divider line (upper third)
-  addMesh(scene, new THREE.BoxGeometry(0.62, 0.025, 0.04), fridgeDivMat, x+2.8, y+1.15, z-2.0+0.305);
+  addMesh(scene, new THREE.BoxGeometry(0.62, 0.025, 0.04), fridgeDivMat, x+3.2, y+1.15, z-2.2+0.305);
   // Main door handle (lower section)
-  addMesh(scene, new THREE.BoxGeometry(0.035, 0.38, 0.035), handleMat, x+2.8-0.26, y+0.62, z-2.0+0.325);
+  addMesh(scene, new THREE.BoxGeometry(0.035, 0.38, 0.035), handleMat, x+3.2-0.26, y+0.62, z-2.2+0.325);
   // Freezer door handle (upper section)
-  addMesh(scene, new THREE.BoxGeometry(0.035, 0.16, 0.035), handleMat, x+2.8-0.26, y+1.28, z-2.0+0.325);
+  addMesh(scene, new THREE.BoxGeometry(0.035, 0.16, 0.035), handleMat, x+3.2-0.26, y+1.28, z-2.2+0.325);
 }
 
 
@@ -209,18 +209,22 @@ function buildMotorcycle(scene, x, y, z) {
   [{ z: -0.72 }, { z: 0.75 }].forEach(({ z: wz }) => {
     const wGrp = new THREE.Group();
     wGrp.position.set(0, 0.38, wz);
-    wGrp.rotation.x = Math.PI / 2;
+    wGrp.rotation.y = Math.PI / 2; // Vertical and aligned with bike axis
+    
     wGrp.add(new THREE.Mesh(wheelGeo, rubberMat));
-    // Rim inner ring
-    wGrp.add(Object.assign(new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.015, 6, 24), rimMat)));
+    wGrp.add(new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.015, 6, 24), rimMat));
+    
     // Spokes
     for (let i = 0; i < 10; i++) {
       const sp = new THREE.Mesh(spokeGeo, rimMat);
       sp.rotation.z = (i / 10) * Math.PI;
       wGrp.add(sp);
     }
-    // Hub
-    wGrp.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8), rimMat)));
+    
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8), rimMat);
+    hub.rotation.x = Math.PI / 2;
+    wGrp.add(hub);
+    
     group.add(wGrp);
   });
 
