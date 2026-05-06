@@ -166,7 +166,25 @@ function buildInterior(scene, x, y, z) {
   [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]].forEach(([dx, dz]) => {
     addMesh(scene, new THREE.BoxGeometry(0.1, 0.9, 0.1), woodMat, x+2.2+dx, y+0.45, z-1.0+dz);
   });
+
+  // ── Refrigerator (right side, back wall area) ─────────────────
+  const fridgeBodyMat  = new THREE.MeshStandardMaterial({ color: 0xdde0e2, roughness: 0.55, metalness: 0.15 });
+  const fridgeDoorMat  = new THREE.MeshStandardMaterial({ color: 0xcdd0d2, roughness: 0.45, metalness: 0.2 });
+  const fridgeDivMat   = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.5 });
+  const handleMat      = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.25, metalness: 0.85 });
+
+  // Body
+  addMesh(scene, new THREE.BoxGeometry(0.68, 1.45, 0.58), fridgeBodyMat, x+2.8, y+0.725, z-2.0);
+  // Front door panel (slightly proud of body)
+  addMesh(scene, new THREE.BoxGeometry(0.62, 1.40, 0.03), fridgeDoorMat, x+2.8, y+0.725, z-2.0+0.305);
+  // Freezer divider line (upper third)
+  addMesh(scene, new THREE.BoxGeometry(0.62, 0.025, 0.04), fridgeDivMat, x+2.8, y+1.15, z-2.0+0.305);
+  // Main door handle (lower section)
+  addMesh(scene, new THREE.BoxGeometry(0.035, 0.38, 0.035), handleMat, x+2.8-0.26, y+0.62, z-2.0+0.325);
+  // Freezer door handle (upper section)
+  addMesh(scene, new THREE.BoxGeometry(0.035, 0.16, 0.035), handleMat, x+2.8-0.26, y+1.28, z-2.0+0.325);
 }
+
 
 function buildMotorcycle(scene, x, y, z) {
   const blackMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.5 });

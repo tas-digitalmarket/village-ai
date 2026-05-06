@@ -58,18 +58,61 @@ const moonLight = new THREE.DirectionalLight(0x4466aa, 0.0);
 moonLight.position.set(-20, 25, -10);
 scene.add(moonLight);
 
-// ── Night lamp inside house (warm bedside glow) ───────────────
-const nightLamp = new THREE.PointLight(0xff9944, 0.0, 8, 1.5);
-nightLamp.position.set(-2.5, 1.8, -9.0); // near the bed
+// ── Realistic Bedside Lamp inside house ─────────────────
+const nightLamp = new THREE.PointLight(0xff9944, 0.0, 9, 1.6);
+nightLamp.position.set(-1.8, 2.0, -9.3);
 scene.add(nightLamp);
 
-// Small emissive lamp mesh
-const lampMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(0.07, 6, 6),
-  new THREE.MeshStandardMaterial({ color: 0xff9944, emissive: 0xff9944, emissiveIntensity: 0 })
-);
-lampMesh.position.copy(nightLamp.position);
-scene.add(lampMesh);
+const lampGroup = new THREE.Group();
+lampGroup.position.set(-1.8, 0.41, -9.3);
+
+// Nightstand
+const nsMat  = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.85 });
+const nsTop  = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.36), nsMat);
+nsTop.position.y = 0.62;
+lampGroup.add(nsTop);
+[[-0.14,-0.14],[0.14,-0.14],[-0.14,0.14],[0.14,0.14]].forEach(([dx,dz]) => {
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.62, 0.04), nsMat);
+  leg.position.set(dx, 0.31, dz);
+  lampGroup.add(leg);
+});
+
+// Lamp base (flat disc)
+const metMat = new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.3, metalness: 0.7 });
+const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.025, 10), metMat);
+lampBase.position.y = 0.655;
+lampGroup.add(lampBase);
+
+// Lamp pole
+const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.32, 8), metMat);
+lampPole.position.y = 0.83;
+lampGroup.add(lampPole);
+
+// Lampshade (truncated cone, open bottom, DoubleSide)
+const shadeMat = new THREE.MeshStandardMaterial({
+  color: 0xf5e0be, roughness: 0.9, side: THREE.DoubleSide,
+  emissive: 0xff9944, emissiveIntensity: 0
+});
+const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.07, 0.16, 12, 1, true), shadeMat);
+lampShade.position.y = 0.995;
+lampGroup.add(lampShade);
+
+// Shade top cap
+const capMat = new THREE.MeshStandardMaterial({ color: 0xf5e0be, roughness: 0.9 });
+const shadeCap = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), capMat);
+shadeCap.rotation.x = -Math.PI / 2;
+shadeCap.position.y = 1.075;
+lampGroup.add(shadeCap);
+
+// Glowing bulb inside shade
+const bulbMat = new THREE.MeshStandardMaterial({
+  color: 0xffdd88, emissive: 0xffdd88, emissiveIntensity: 0
+});
+const bulbMesh = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), bulbMat);
+bulbMesh.position.y = 0.97;
+lampGroup.add(bulbMesh);
+
+scene.add(lampGroup);
 
 // ── Post-processing ───────────────────────────────────────────
 const composer = new EffectComposer(renderer);
@@ -132,9 +175,9 @@ function updateSky(hour) {
 
   // Night lamp: glow inside house when dark (after 21:00 or before 6:00)
   const isNight = hour > 21 || hour < 6;
-  const lampStr = isNight ? 1.8 : 0.0;
-  nightLamp.intensity = lampStr;
-  if (lampMesh.material) lampMesh.material.emissiveIntensity = isNight ? 2.0 : 0.0;
+  nightLamp.intensity = isNight ? 1.8 : 0.0;
+  shadeMat.emissiveIntensity = isNight ? 0.55 : 0.0;
+  bulbMat.emissiveIntensity  = isNight ? 3.5  : 0.0;
 
   const isDusk = hour > 17.5 && hour < 21;
   const isDawn = hour > 5 && hour < 9;
