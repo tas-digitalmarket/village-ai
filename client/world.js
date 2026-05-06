@@ -187,29 +187,198 @@ function buildInterior(scene, x, y, z) {
 
 
 function buildMotorcycle(scene, x, y, z) {
-  const blackMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.5 });
-  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.1, metalness: 0.9 });
+  const blackMat   = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3, metalness: 0.4 });
+  const chromeMat  = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.08, metalness: 0.95 });
+  const redMat     = new THREE.MeshStandardMaterial({ color: 0xbb2200, roughness: 0.3, metalness: 0.2 });
+  const seatMat    = new THREE.MeshStandardMaterial({ color: 0x1a1212, roughness: 0.95 });
+  const engineMat  = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.45, metalness: 0.65 });
+  const rubberMat  = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.95 });
+  const rimMat     = new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.2, metalness: 0.85 });
+  const glowMat    = new THREE.MeshStandardMaterial({ color: 0xffffcc, roughness: 0.1, emissive: 0xffffaa, emissiveIntensity: 0.3 });
+  const tailMat    = new THREE.MeshStandardMaterial({ color: 0xff2200, roughness: 0.3, emissive: 0xff1100, emissiveIntensity: 0.15 });
 
   const group = new THREE.Group();
   group.position.set(x, y, z);
-  group.rotation.y = -Math.PI / 3;
+  group.rotation.y = -Math.PI / 5;
   scene.add(group);
 
-  // Wheels
-  const wheelGeo = new THREE.TorusGeometry(0.35, 0.1, 8, 20);
-  const w1 = new THREE.Mesh(wheelGeo, blackMat); w1.position.set(0, 0.35, 0.7); group.add(w1);
-  const w2 = new THREE.Mesh(wheelGeo, blackMat); w2.position.set(0, 0.35, -0.7); group.add(w2);
-  
-  // Frame + Tank
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 1.2), blackMat);
-  body.position.set(0, 0.55, 0); group.add(body);
-  const tank = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.4, 4, 8), blackMat);
-  tank.rotation.x = Math.PI/2; tank.position.set(0, 0.85, 0.1); group.add(tank);
-  
-  // Handlebars
-  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9), chromeMat);
-  bar.rotation.z = Math.PI/2; bar.position.set(0, 1.05, 0.5); group.add(bar);
+  // ── Wheels ────────────────────────────────────────────────────
+  const wheelGeo = new THREE.TorusGeometry(0.38, 0.085, 12, 30);
+  const spokeGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.76, 4);
+
+  [{ z: -0.72 }, { z: 0.75 }].forEach(({ z: wz }) => {
+    const wGrp = new THREE.Group();
+    wGrp.position.set(0, 0.38, wz);
+    wGrp.rotation.x = Math.PI / 2;
+    wGrp.add(new THREE.Mesh(wheelGeo, rubberMat));
+    // Rim inner ring
+    wGrp.add(Object.assign(new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.015, 6, 24), rimMat)));
+    // Spokes
+    for (let i = 0; i < 10; i++) {
+      const sp = new THREE.Mesh(spokeGeo, rimMat);
+      sp.rotation.z = (i / 10) * Math.PI;
+      wGrp.add(sp);
+    }
+    // Hub
+    wGrp.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8), rimMat)));
+    group.add(wGrp);
+  });
+
+  // ── Frame ─────────────────────────────────────────────────────
+  // Top spine (backbone tube, slightly angled)
+  const spineGeo = new THREE.CylinderGeometry(0.024, 0.024, 1.42, 7);
+  const spine = new THREE.Mesh(spineGeo, chromeMat);
+  spine.rotation.x = Math.PI / 2;
+  spine.position.set(0, 0.88, 0.01);
+  group.add(spine);
+
+  // Down tube (head to engine)
+  const dtGeo = new THREE.CylinderGeometry(0.020, 0.020, 0.88, 6);
+  const dt = new THREE.Mesh(dtGeo, chromeMat);
+  dt.rotation.x = Math.PI * 0.58;
+  dt.position.set(0, 0.64, 0.44);
+  group.add(dt);
+
+  // Seat tube (vertical under seat)
+  const stGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.50, 6);
+  const st = new THREE.Mesh(stGeo, chromeMat);
+  st.position.set(0, 0.63, -0.20);
+  group.add(st);
+
+  // Chainstays (rear)
+  [-0.09, 0.09].forEach(ox => {
+    const cs = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.82, 6), chromeMat);
+    cs.rotation.x = Math.PI * 0.54;
+    cs.position.set(ox, 0.41, -0.30);
+    group.add(cs);
+  });
+
+  // Swingarm
+  [-0.06, 0.06].forEach(ox => {
+    const sa = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.74, 6), chromeMat);
+    sa.rotation.x = Math.PI / 2;
+    sa.position.set(ox, 0.38, -0.35);
+    group.add(sa);
+  });
+
+  // ── Engine Block ───────────────────────────────────────────────
+  const eng = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.34, 0.38), engineMat);
+  eng.position.set(0, 0.54, 0.10);
+  group.add(eng);
+  // Cylinder head (fins)
+  const cyh = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.22), engineMat);
+  cyh.position.set(0, 0.74, 0.09);
+  group.add(cyh);
+  // Cooling fins
+  for (let i = 0; i < 4; i++) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.012, 0.24), engineMat);
+    fin.position.set(0, 0.66 + i * 0.022, 0.09);
+    group.add(fin);
+  }
+  // Crankcase
+  const cc = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.32), engineMat);
+  cc.position.set(0, 0.37, 0.10);
+  group.add(cc);
+
+  // ── Fuel Tank ─────────────────────────────────────────────────
+  const tank = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.48, 5, 12), redMat);
+  tank.rotation.x = Math.PI / 2;
+  tank.position.set(0, 0.96, 0.10);
+  group.add(tank);
+  // Tank cap
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.025, 8), chromeMat);
+  cap.position.set(0, 1.09, 0.04);
+  group.add(cap);
+
+  // ── Seat ──────────────────────────────────────────────────────
+  const seat = new THREE.Mesh(new THREE.CapsuleGeometry(0.095, 0.52, 4, 8), seatMat);
+  seat.rotation.x = Math.PI / 2;
+  seat.position.set(0, 0.985, -0.32);
+  group.add(seat);
+
+  // ── Front Fork ────────────────────────────────────────────────
+  [-0.085, 0.085].forEach(ox => {
+    const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.016, 0.60, 7), chromeMat);
+    fork.rotation.x = Math.PI * 0.13;
+    fork.position.set(ox, 0.66, 0.66);
+    group.add(fork);
+    // Lower fork leg (slightly wider)
+    const forkLow = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.25, 7), chromeMat);
+    forkLow.rotation.x = Math.PI * 0.13;
+    forkLow.position.set(ox, 0.42, 0.73);
+    group.add(forkLow);
+  });
+  // Fork bridge
+  const fb = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.05), chromeMat);
+  fb.position.set(0, 0.82, 0.66);
+  group.add(fb);
+
+  // ── Handlebars ────────────────────────────────────────────────
+  const hbar = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.58, 6), chromeMat);
+  hbar.rotation.z = Math.PI / 2;
+  hbar.position.set(0, 1.12, 0.64);
+  group.add(hbar);
+  // Risers
+  [-0.22, 0.22].forEach(ox => {
+    const riser = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.12, 6), chromeMat);
+    riser.position.set(ox, 1.065, 0.64);
+    group.add(riser);
+    // Grip rubber
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.11, 8), blackMat);
+    grip.rotation.z = Math.PI / 2;
+    grip.position.set(ox, 1.12, 0.64);
+    group.add(grip);
+  });
+  // Brake lever
+  const lever = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.006, 0.10), chromeMat);
+  lever.rotation.y = -0.4;
+  lever.position.set(-0.26, 1.11, 0.70);
+  group.add(lever);
+
+  // ── Exhaust ───────────────────────────────────────────────────
+  // Header pipe
+  const hdr = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.55, 8), chromeMat);
+  hdr.rotation.x = Math.PI / 2;
+  hdr.position.set(-0.16, 0.44, -0.12);
+  group.add(hdr);
+  // Mid pipe (angled)
+  const mid = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.34, 8), chromeMat);
+  mid.rotation.x = Math.PI * 0.6;
+  mid.position.set(-0.16, 0.35, -0.50);
+  group.add(mid);
+  // Muffler
+  const muf = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.032, 0.38, 10), chromeMat);
+  muf.rotation.x = Math.PI / 2;
+  muf.position.set(-0.16, 0.40, -0.75);
+  group.add(muf);
+  // End cap
+  const end = new THREE.Mesh(new THREE.CircleGeometry(0.032, 10), blackMat);
+  end.rotation.y = Math.PI / 2;
+  end.position.set(-0.16, 0.40, -0.95);
+  group.add(end);
+
+  // ── Headlight ─────────────────────────────────────────────────
+  const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.055, 12), glowMat);
+  hl.rotation.x = Math.PI / 2;
+  hl.position.set(0, 0.86, 0.84);
+  group.add(hl);
+  // Headlight rim
+  const hlr = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.012, 6, 12), chromeMat);
+  hlr.rotation.x = Math.PI / 2;
+  hlr.position.set(0, 0.86, 0.84);
+  group.add(hlr);
+
+  // ── Tail Light ────────────────────────────────────────────────
+  const tl = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, 0.03), tailMat);
+  tl.position.set(0, 0.99, -0.93);
+  group.add(tl);
+
+  // ── Shadows ───────────────────────────────────────────────────
+  group.traverse(obj => {
+    if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
+  });
 }
+
 
 function buildAxeArea(scene, x, y, z) {
   const woodMat = new THREE.MeshStandardMaterial({ map: makeWoodTexture(), color: 0x553311 });

@@ -48,18 +48,19 @@ function buildUpcomingSchedule(directives, worldTime, weather) {
 
   // Add daily AI routine milestones (always shown)
   const routineMilestones = [
-    { time: '05:00', label: 'Fajr Prayer', action: 'praying', source: 'routine' },
-    { time: '06:00', label: 'Morning Tea & Breakfast', action: 'eating', source: 'routine' },
-    { time: '06:30', label: 'Water the Fields', action: 'watering_crops', source: 'routine' },
-    { time: '09:00', label: 'Chop Wood', action: 'chopping_wood', source: 'routine' },
-    { time: '12:00', label: 'Dhuhr Prayer', action: 'praying', source: 'routine' },
-    { time: '12:30', label: 'Lunch', action: 'eating', source: 'routine' },
-    { time: '15:30', label: 'Asr Prayer', action: 'praying', source: 'routine' },
-    { time: '16:00', label: 'Harvest / Tend Crops', action: 'harvesting', source: 'routine' },
-    { time: '18:30', label: 'Maghrib Prayer', action: 'praying', source: 'routine' },
-    { time: '19:00', label: 'Dinner', action: 'eating', source: 'routine' },
-    { time: '21:00', label: 'Isha Prayer', action: 'praying', source: 'routine' },
-    { time: '22:00', label: 'Sleep', action: 'sleeping', source: 'routine' },
+    { time: '08:00', label: 'Wake Up & Breakfast',   action: 'eating',              source: 'routine' },
+    { time: '09:00', label: 'Water the Fields',      action: 'watering_crops',      source: 'routine' },
+    { time: '10:30', label: 'Chop Wood',             action: 'chopping_wood',       source: 'routine' },
+    { time: '12:00', label: 'Lunch',                 action: 'eating',              source: 'routine' },
+    { time: '12:30', label: 'Afternoon Rest',        action: 'sitting',             source: 'routine' },
+    { time: '13:30', label: 'Tend Crops',            action: 'tending_crops',       source: 'routine' },
+    { time: '15:00', label: 'Check Motorcycle',      action: 'checking_motorcycle', source: 'routine' },
+    { time: '16:00', label: 'Harvest Crops',         action: 'harvesting',          source: 'routine' },
+    { time: '17:30', label: 'Wander the Farm',       action: 'wandering',           source: 'routine' },
+    { time: '18:30', label: 'Dinner',                action: 'eating',              source: 'routine' },
+    { time: '19:30', label: 'Evening Rest',          action: 'sitting',             source: 'routine' },
+    { time: '21:00', label: 'Evening Stroll',        action: 'wandering',           source: 'routine' },
+    { time: '22:00', label: 'Sleep',                 action: 'sleeping',            source: 'routine' },
   ];
 
   // Only add routine items that don't conflict with Creator directives

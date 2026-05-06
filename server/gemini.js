@@ -18,19 +18,18 @@ const sdkVersion = (() => {
 console.log('[Gemini] SDK version:', sdkVersion);
 
 const LOCATIONS = {
-  home:         { x: 0,   z: 0    },
-  bed:          { x: 0,   z: 0.2  },
-  east_field:   { x: 10,  z: 0    },
-  west_field:   { x: -10, z: 0    },
-  well:         { x: 0,   z: 10   },
-  wood_stump:   { x: 5,   z: 5    },
-  haystack:     { x: -5,  z: 5    },
-  path_center:  { x: 0,   z: 0    },
-  prayer_spot:  { x: 2,   z: -4   },
-  fishing_spot: { x: -10, z: -10  },
-  table:        { x: 0.5, z: -0.5 },
-  motorcycle:   { x: 8,   z: -8   },
-  fence_north:  { x: 0,   z: 20   }
+  home:         { x: 0,    z: -5.5  },
+  bed:          { x: -2.5, z: -9.5  },
+  east_field:   { x: 10,   z: 0     },
+  west_field:   { x: -10,  z: 0     },
+  well:         { x: 6,    z: 2     },
+  wood_stump:   { x: -3,   z: 3.5   },
+  haystack:     { x: -5,   z: 5.5   },
+  path_center:  { x: 0,    z: 3     },
+  fishing_spot: { x: -10,  z: -10   },
+  table:        { x: 2.2,  z: -9.0  },
+  motorcycle:   { x: 4,    z: -4    },
+  fence_north:  { x: 0,    z: 11    }
 };
 
 // These models are supported on this specific API key
@@ -135,20 +134,20 @@ function getRoutineHint(h, weather, state) {
   if (weather === 'rainy' || weather === 'stormy') return 'WEATHER: Go inside immediately (running_to_shelter to home).';
   if (state.energy < 15) return 'CRITICAL: Energy too low — sleep at bed NOW.';
   if (state.hunger > 85) return 'CRITICAL: Very hungry — eat at table NOW.';
-  if (h >= 22 || h < 4.5)  return 'Sleep at bed.';
-  if (h >= 4.5 && h < 6)   return 'Morning prayer at prayer_spot (Fajr).';
-  if (h >= 6 && h < 6.5)   return 'Breakfast at table.';
-  if (h >= 6.5 && h < 9)   return 'Water the fields (watering_crops at east_field).';
-  if (h >= 9 && h < 12)    return 'Chop wood at wood_stump.';
-  if (h >= 12 && h < 12.5) return 'Noon prayer at prayer_spot (Dhuhr).';
-  if (h >= 12.5 && h < 14) return 'Lunch at table.';
-  if (h >= 14 && h < 15.5) return 'Rest at home.';
-  if (h >= 15.5 && h < 16) return 'Afternoon prayer at prayer_spot (Asr).';
-  if (h >= 16 && h < 18.5) return 'Harvest crops in the fields.';
-  if (h >= 18.5 && h < 19) return 'Sunset prayer at prayer_spot (Maghrib).';
-  if (h >= 19 && h < 20)   return 'Dinner at table.';
-  if (h >= 20 && h < 21)   return 'Sit outside at path_center.';
-  if (h >= 21 && h < 21.5) return 'Night prayer at prayer_spot (Isha).';
+  if (h >= 22 || h < 8)   return 'Sleep at bed.';
+  if (h >= 8 && h < 8.5)  return 'Wake up and have breakfast at table.';
+  if (h >= 8.5 && h < 9)  return 'Morning routine at home.';
+  if (h >= 9 && h < 10.5) return 'Water the fields (watering_crops at east_field).';
+  if (h >= 10.5 && h < 12) return 'Chop wood at wood_stump.';
+  if (h >= 12 && h < 12.5) return 'Lunch at table.';
+  if (h >= 12.5 && h < 13.5) return 'Rest after lunch (sitting at bed).';
+  if (h >= 13.5 && h < 15) return 'Tend and care for crops in the fields.';
+  if (h >= 15 && h < 16)  return 'Check and clean motorcycle at motorcycle area.';
+  if (h >= 16 && h < 17.5) return 'Harvest crops in the fields.';
+  if (h >= 17.5 && h < 18.5) return 'Wander the farm, enjoy the evening air.';
+  if (h >= 18.5 && h < 19.5) return 'Dinner at table.';
+  if (h >= 19.5 && h < 21) return 'Evening rest at home (sitting at bed).';
+  if (h >= 21 && h < 22)  return 'Evening stroll around the farm (wandering).';
   return 'Wind down and prepare for sleep.';
 }
 
@@ -157,23 +156,22 @@ function buildFallbackAction(state, weather) {
   let action = 'idle', loc = 'path_center';
 
   if (weather === 'rainy' || weather === 'stormy') { action = 'running_to_shelter'; loc = 'home'; }
-  else if (state.energy < 15) { action = 'sleeping'; loc = 'bed'; }
-  else if (state.hunger > 85) { action = 'eating';   loc = 'table'; }
-  else if (h >= 22 || h < 4.5) { action = 'sleeping';      loc = 'bed'; }
-  else if (h < 6)               { action = 'praying';        loc = 'prayer_spot'; }
-  else if (h < 6.5)             { action = 'eating';         loc = 'table'; }
-  else if (h < 9)               { action = 'watering_crops'; loc = 'east_field'; }
-  else if (h < 12)              { action = 'chopping_wood';  loc = 'wood_stump'; }
-  else if (h < 12.5)            { action = 'praying';        loc = 'prayer_spot'; }
-  else if (h < 14)              { action = 'eating';         loc = 'table'; }
-  else if (h < 15.5)            { action = 'sitting';        loc = 'home'; }
-  else if (h < 16)              { action = 'praying';        loc = 'prayer_spot'; }
-  else if (h < 18.5)            { action = 'harvesting';     loc = 'east_field'; }
-  else if (h < 19)              { action = 'praying';        loc = 'prayer_spot'; }
-  else if (h < 20)              { action = 'eating';         loc = 'table'; }
-  else if (h < 21)              { action = 'sitting';        loc = 'path_center'; }
-  else if (h < 21.5)            { action = 'praying';        loc = 'prayer_spot'; }
-  else                          { action = 'sleeping';        loc = 'bed'; }
+  else if (state.energy < 15) { action = 'sleeping';          loc = 'bed'; }
+  else if (state.hunger > 85) { action = 'eating';            loc = 'table'; }
+  else if (h >= 22 || h < 8) { action = 'sleeping';           loc = 'bed'; }
+  else if (h < 8.5)          { action = 'eating';             loc = 'table'; }
+  else if (h < 9)            { action = 'idle';               loc = 'home'; }
+  else if (h < 10.5)         { action = 'watering_crops';     loc = 'east_field'; }
+  else if (h < 12)           { action = 'chopping_wood';      loc = 'wood_stump'; }
+  else if (h < 12.5)         { action = 'eating';             loc = 'table'; }
+  else if (h < 13.5)         { action = 'sitting';            loc = 'bed'; }
+  else if (h < 15)           { action = 'tending_crops';      loc = 'west_field'; }
+  else if (h < 16)           { action = 'checking_motorcycle'; loc = 'motorcycle'; }
+  else if (h < 17.5)         { action = 'harvesting';         loc = 'east_field'; }
+  else if (h < 18.5)         { action = 'wandering';          loc = 'path_center'; }
+  else if (h < 19.5)         { action = 'eating';             loc = 'table'; }
+  else if (h < 21)           { action = 'sitting';            loc = 'bed'; }
+  else                       { action = 'wandering';           loc = 'fence_north'; }
 
   const pos = LOCATIONS[loc] || { x: 0, z: 0 };
   const thoughts = {

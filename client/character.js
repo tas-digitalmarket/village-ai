@@ -195,20 +195,36 @@ export class Villager {
     axeGroup.visible = false;
     this.rightHand.add(axeGroup);
     this.propMeshes.axe = axeGroup;
+
+    // Cleaning rag for motorcycle
+    const ragGroup = new THREE.Group();
+    const ragMat = new THREE.MeshStandardMaterial({ color: 0xddddaa, roughness: 0.95 });
+    const ragBase = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.004, 0.08), ragMat);
+    ragGroup.add(ragBase);
+    const fold = new THREE.Mesh(
+      new THREE.BoxGeometry(0.10, 0.005, 0.025),
+      new THREE.MeshStandardMaterial({ color: 0xcccc88, roughness: 0.95 })
+    );
+    fold.position.z = 0.025;
+    ragGroup.add(fold);
+    ragGroup.visible = false;
+    this.leftHand.add(ragGroup);
+    this.propMeshes.rag = ragGroup;
   }
 
   _setMacroAction(action) {
     if (action === this.macroAction) return;
-    this.macroAction = action;
-    this.microTasks  = [];
-    this.microTimer  = 0;
+    this.macroAction      = action;
+    this.microTasks       = [];
+    this.microTimer       = 0;
+    this.currentMicroTask = null;  // ← critical: reset active task
     this._setCarried(null);
 
     switch (action) {
       case 'watering_crops': {
         this.microTasks.push({type:'walk', pos:TOOL_LOCATIONS.watering_can});
         this.microTasks.push({type:'pickup', item:'watering_can', duration:1.0});
-        PLANT_POSITIONS.forEach((p, i) => {
+        PLANT_POSITIONS.forEach((p) => {
           this.microTasks.push({type:'walk',  pos:p});
           this.microTasks.push({type:'water', pos:p, duration:2.5});
         });
@@ -230,10 +246,19 @@ export class Villager {
       }
       case 'harvesting':
       case 'tending_crops': {
-        PLANT_POSITIONS.slice(0,6).forEach((p,i) => {
-          this.microTasks.push({type:'walk',    pos:p});
-          this.microTasks.push({type:'tend',    duration:2.0});
+        PLANT_POSITIONS.slice(0,6).forEach((p) => {
+          this.microTasks.push({type:'walk', pos:p});
+          this.microTasks.push({type:'tend', duration:2.0});
         });
+        break;
+      }
+      case 'checking_motorcycle': {
+        this.microTasks.push({type:'walk',   pos:{x:4, z:-4}});
+        this.microTasks.push({type:'pickup', item:'rag', duration:0.5});
+        for (let i = 0; i < 4; i++) {
+          this.microTasks.push({type:'wipe', duration:2.5});
+        }
+        this.microTasks.push({type:'putdown', item:'rag', duration:0.5});
         break;
       }
       case 'sleeping': {
@@ -246,10 +271,9 @@ export class Villager {
         this.microTasks.push({type:'walk', pos: INSIDE_TABLE});
         break;
       }
-      case 'sitting':
-      case 'praying': {
+      case 'sitting': {
         this.microTasks.push({type:'walk', pos: HOUSE_DOOR});
-        this.microTasks.push({type:'walk', pos: INSIDE_CENTER});
+        this.microTasks.push({type:'walk', pos: INSIDE_BED});
         break;
       }
     }
@@ -312,13 +336,24 @@ export class Villager {
         if (p.lUpperArm) p.lUpperArm.rotation.x = -0.9 + Math.sin(t*2)*0.1;
         if (p.lArm)      p.lArm.rotation.x      = -0.4;
         break;
-      case 'chop':
+      case 'chop': {
         const chop = Math.sin(t*4);
         if (p.rUpperArm) p.rUpperArm.rotation.x = -1.2 + chop*0.8;
         break;
+      }
       case 'tend':
         if (p.torso) p.torso.rotation.x = 0.4 + Math.sin(t*2)*0.1;
         break;
+      case 'wipe': {
+        // Wiping motion — left arm scrubs side to side, right steadies
+        const sw = Math.sin(t * 5);
+        if (p.lUpperArm) p.lUpperArm.rotation.x = -0.8;
+        if (p.lUpperArm) p.lUpperArm.rotation.z =  0.3 + sw * 0.5;
+        if (p.lArm)      p.lArm.rotation.x      = -0.5 + sw * 0.2;
+        if (p.rUpperArm) p.rUpperArm.rotation.x = -0.4;
+        if (p.torso)     p.torso.rotation.y      =  sw * 0.15;
+        break;
+      }
     }
 
     if (macro === 'sleeping') {

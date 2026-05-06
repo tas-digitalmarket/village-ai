@@ -60,11 +60,11 @@ scene.add(moonLight);
 
 // ── Realistic Bedside Lamp inside house ─────────────────
 const nightLamp = new THREE.PointLight(0xff9944, 0.0, 9, 1.6);
-nightLamp.position.set(-1.8, 2.0, -9.3);
+nightLamp.position.set(-1.2, 2.0, -10.5);
 scene.add(nightLamp);
 
 const lampGroup = new THREE.Group();
-lampGroup.position.set(-1.8, 0.41, -9.3);
+lampGroup.position.set(-1.2, 0.41, -10.5);
 
 // Nightstand
 const nsMat  = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.85 });
