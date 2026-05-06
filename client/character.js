@@ -366,14 +366,14 @@ export class Villager {
 
     if (macro === 'sleeping') {
       this.root.rotation.x = -Math.PI/2;
-      this.root.position.y = 0.98; // On top of bed mattress (0.91)
-      this.root.position.z = this.currentPos.z - 0.85; // Shift to center body on bed (absolute to prevent flying off)
+      this.root.position.y = 1.15; // Mattress top is 1.01. Back offset is 0.1. So 1.15 places him perfectly on top.
+      this.root.position.z = this.currentPos.z - 0.85; // Shift to center body on bed
     } else if (macro === 'sitting') {
-      if (p.lLeg) p.lLeg.rotation.x = 0.85;
-      if (p.rLeg) p.rLeg.rotation.x = 0.85;
-      if (p.hips) p.hips.position.y = 0.45;
+      if (p.lLeg) p.lLeg.rotation.x = 1.2; // Bend knees
+      if (p.rLeg) p.rLeg.rotation.x = 1.2;
+      if (p.hips) p.hips.position.y = 0.35;
       if (p.torso) p.torso.rotation.x = 0.1;
-      this.root.position.y = 0.45;
+      this.root.position.y = 0.70; // root(0.70) + hips(0.35) = 1.05 (just above mattress)
     }
   }
 
