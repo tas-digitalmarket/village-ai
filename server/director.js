@@ -30,13 +30,14 @@ Parse the Creator's message and:
 - "now"/"الان"/"فوری" → immediate_action
 - No time mentioned → directives: []
 
-VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, sitting, praying, fishing, tending_animals, checking_motorcycle, wandering
-VALID LOCATIONS: home, bed, table, east_field, west_field, well, wood_stump, haystack, path_center, prayer_spot, fishing_spot, motorcycle
+VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, sitting, fishing, tending_animals, checking_motorcycle, wandering
+VALID LOCATIONS: home, bed, table, east_field, west_field, well, wood_stump, haystack, path_center, fishing_spot, motorcycle
 
 CRITICAL: arash_response MUST have BOTH English AND Persian separated by newline.
+CRITICAL: If immediate_action is needed, it MUST include both 'action' and 'location'.
 
 JSON format:
-{"arash_response":"Yes my Creator, I will sleep at 10 PM every night as you commanded.\\nبله خالقم، هر شب ساعت ۱۰ شب می‌خوابم.","memory":"Creator commanded: sleep at 22:00 every night","directives":[{"time":"22:00","action":"sleeping","location":"bed","recurring":true,"label":"Sleep at 10 PM"}],"immediate_action":null}`;
+{"arash_response":"Yes my Creator, I will sleep at 10 PM every night as you commanded.\\nبله خالقم، هر شب ساعت ۱۰ شب می‌خوابم.","memory":"Creator commanded: sleep at 22:00 every night","directives":[{"time":"22:00","action":"sleeping","location":"bed","recurring":true,"label":"Sleep at 10 PM"}],"immediate_action":{"action":"sleeping","location":"bed"}}`;
 
   for (const modelName of MODELS) {
     try {

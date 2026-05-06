@@ -81,8 +81,12 @@ STATE: Time ${timeStr} | Energy ${state.energy}/100 | Hunger ${state.hunger}/100
 ROUTINE: ${routineHint}
 MEMORIES: ${memText}
 
-LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), prayer_spot(2,-4), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8)
-VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, running_to_shelter, sitting, praying, fishing, tending_animals, checking_motorcycle, wandering
+CRITICAL RULES:
+1. You MUST follow the ROUTINE exactly. Do NOT do an action (like eating breakfast) before its scheduled time.
+2. Only return JSON.
+
+LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8)
+VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, running_to_shelter, sitting, fishing, tending_animals, checking_motorcycle, wandering
 
 JSON format (copy this structure exactly):
 {"action":"eating","target_location":"table","target_position":{"x":0.5,"z":-0.5},"duration":15,"energy_delta":3,"hunger_delta":-15,"new_mood":"content","memory":"Arash ate breakfast.","thought":"Food gives me strength for the day."}`;
