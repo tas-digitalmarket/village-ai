@@ -367,7 +367,7 @@ export class Villager {
     if (macro === 'sleeping') {
       this.root.rotation.x = -Math.PI/2;
       this.root.position.y = 0.98; // On top of bed mattress (0.91)
-      this.root.position.z -= 0.85; // Shift to center body on bed (pivot is at feet)
+      this.root.position.z = this.currentPos.z - 0.85; // Shift to center body on bed (absolute to prevent flying off)
     } else if (macro === 'sitting') {
       if (p.lLeg) p.lLeg.rotation.x = 0.85;
       if (p.rLeg) p.rLeg.rotation.x = 0.85;

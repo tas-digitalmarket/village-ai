@@ -5,11 +5,11 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { buildWorld } from './world.js';
-import { Villager } from './character.js';
-import { WeatherFX } from './weather-fx.js';
-import { HUD } from './hud.js';
-import { CreatorPanel } from './creator.js';
+import { buildWorld } from './world.js?v=4';
+import { Villager } from './character.js?v=4';
+import { WeatherFX } from './weather-fx.js?v=4';
+import { HUD } from './hud.js?v=4';
+import { CreatorPanel } from './creator.js?v=4';
 
 // ── Renderer ─────────────────────────────────────────────────
 const canvas = document.getElementById('world-canvas');
