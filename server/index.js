@@ -234,7 +234,10 @@ app.get('/health', (req, res) => {
 
 // ── Boot ──────────────────────────────────────────────────────
 initDatabase();
-startScheduler(broadcast);
+const { catchUpSimulation } = require('./scheduler');
+catchUpSimulation(broadcast).then(() => {
+  startScheduler(broadcast);
+});
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {

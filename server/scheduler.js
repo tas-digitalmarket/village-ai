@@ -16,6 +16,30 @@ const firedDirectives = new Set();
 // (User asked: "1 real minute = 1 game second" — interpreted as fast world time)
 const WORLD_MINUTES_PER_TICK = 30;
 
+function getFallbackAction(h, weather, state) {
+  const isInside = state.position_z < -5;
+  let action = 'idle', loc = 'path_center';
+
+  if ((weather === 'rainy' || weather === 'stormy') && !isInside) {
+    action = 'running_to_shelter'; loc = 'home';
+  }
+  else if (state.energy < 15) { action = 'sleeping';          loc = 'bed'; }
+  else if (state.hunger > 85) { action = 'eating';            loc = 'table'; }
+  else if (h >= 22 || h < 8)  { action = 'sleeping';           loc = 'bed'; }
+  else if (h < 8.5)           { action = 'eating';             loc = 'table'; }
+  else if (h < 10.5)          { action = 'watering_crops';     loc = 'east_field'; }
+  else if (h < 12)            { action = 'chopping_wood';      loc = 'wood_stump'; }
+  else if (h < 13.5)          { action = 'sitting';            loc = 'bed'; }
+  else if (h < 15)            { action = 'tending_crops';      loc = 'west_field'; }
+  else if (h < 17.5)          { action = 'harvesting';         loc = 'east_field'; }
+  else if (h < 18.5)          { action = 'wandering';          loc = 'path_center'; }
+  else if (h < 20)            { action = 'eating';             loc = 'table'; }
+  else if (h < 22)            { action = 'sitting';            loc = 'bed'; }
+  
+  const pos = LOCATIONS[loc] || { x: 0, z: 0 };
+  return { action, loc, pos };
+}
+
 function advanceWorldTime(currentTime, minutesToAdd = WORLD_MINUTES_PER_TICK) {
   const [h, m] = (currentTime || '06:00').split(':').map(Number);
   const total = h * 60 + m + minutesToAdd;
@@ -190,11 +214,66 @@ function startScheduler(broadcast) {
   const interval = parseInt(process.env.TICK_INTERVAL || '1');
   console.log(`[Scheduler] Heartbeat every ${interval} min — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
 
-  // First tick after 4 seconds
-  setTimeout(() => runTick(broadcast), 4000);
+  // First tick after 10 seconds
+  setTimeout(() => runTick(broadcast), 10000);
 
   // Then every 1 minute
   cron.schedule(`*/${interval} * * * *`, () => runTick(broadcast));
 }
 
-module.exports = { startScheduler, buildUpcomingSchedule };
+async function catchUpSimulation(broadcast) {
+  console.log('[Scheduler] ⏳ Checking for time gaps to catch up...');
+  const state = getState();
+  const lastTime = state.timestamp ? new Date(state.timestamp).getTime() : Date.now();
+  const now = Date.now();
+  const elapsedMs = now - lastTime;
+  const elapsedMin = Math.floor(elapsedMs / 1000 / 60);
+
+  // 1 tick = 1 real minute
+  let ticksToCatchUp = Math.floor(elapsedMin / 1);
+  if (ticksToCatchUp <= 0) {
+    console.log('[Scheduler] ✨ No catch-up needed.');
+    return;
+  }
+
+  // Cap at 48 ticks (1 day) to avoid massive processing
+  if (ticksToCatchUp > 48) {
+    console.log(`[Scheduler] ⚠️ Long gap detected (${elapsedMin} min). Capping catch-up to 48 ticks (1 day).`);
+    ticksToCatchUp = 48;
+  }
+
+  console.log(`[Scheduler] ⏩ Fast-forwarding ${ticksToCatchUp} ticks...`);
+
+  let currentState = state;
+  for (let i = 0; i < ticksToCatchUp; i++) {
+    const nextTime = advanceWorldTime(currentState.world_time);
+    const [hStr, mStr] = nextTime.split(':');
+    const hNum = parseInt(hStr) + (parseInt(mStr)/60);
+    
+    // Check midnight
+    const [prevH] = currentState.world_time.split(':').map(Number);
+    const [newH]  = nextTime.split(':').map(Number);
+    const crossedMidnight = prevH >= 22 && newH <= 1;
+    const newDay = crossedMidnight ? (currentState.day || 1) + 1 : (currentState.day || 1);
+
+    // Get fallback decision for speed (no AI calls during catch-up)
+    const fb = getFallbackAction(hNum, currentState.weather || 'sunny', currentState);
+    
+    currentState = {
+      ...currentState,
+      world_time: nextTime,
+      day: newDay,
+      energy: clamp((currentState.energy || 80) + (fb.action === 'sleeping' ? 10 : -3), 0, 100),
+      hunger: clamp((currentState.hunger || 20) + (fb.action === 'eating' ? -15 : 2), 0, 100),
+      current_action: fb.action,
+      position_x: fb.pos.x,
+      position_z: fb.pos.z,
+      timestamp: new Date(lastTime + (i+1)*60*1000).toISOString()
+    };
+  }
+
+  saveState(currentState);
+  console.log(`[Scheduler] ✅ Catch-up complete. New Time: Day ${currentState.day}, ${currentState.world_time}`);
+}
+
+module.exports = { startScheduler, buildUpcomingSchedule, catchUpSimulation };
