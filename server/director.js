@@ -3,7 +3,7 @@ const { GEMINI_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY, { apiVersion: 'v1' });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const MODELS = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.0-flash-lite'];
+const MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview'];
 
 function extractJSON(text) {
   const stripped = text.replace(/```(?:json)?[\s\S]*?```/g, t =>
@@ -17,7 +17,9 @@ function extractJSON(text) {
 async function processDirective(message, state, memories) {
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No memories yet.';
 
-  const prompt = `You are Arash, a humble 35-year-old village farmer. Your Creator has spoken.
+  const prompt = `تو آرش هستی؛ یک ویلیجر خودمختار در یک دهکده مجازی.
+خالق تو (Creator) مستقیماً با تو صحبت کرده است.
+به شدت به نظم و برنامه‌ریزی اهمیت می‌دهی، از تنهایی و سکوت لذت می‌بری. به عنوان آرش، باید پیام خالق را تحلیل کنی.
 Output ONLY a raw JSON object. No markdown, no explanation.
 
 CREATOR MESSAGE: "${message}"
@@ -34,10 +36,10 @@ VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating,
 VALID LOCATIONS: home, bed, table, east_field, west_field, well, wood_stump, haystack, path_center, fishing_spot, motorcycle
 
 CRITICAL: arash_response MUST have BOTH English AND Persian separated by newline.
-CRITICAL: If immediate_action is needed, it MUST include both 'action' and 'location'.
+CRITICAL: If immediate_action is needed, it MUST include 'action', 'location', and a 'thought' (in Persian, reflecting Arash's obedience or reaction).
 
 JSON format:
-{"arash_response":"Yes my Creator, I will sleep at 10 PM every night as you commanded.\\nبله خالقم، هر شب ساعت ۱۰ شب می‌خوابم.","memory":"Creator commanded: sleep at 22:00 every night","directives":[{"time":"22:00","action":"sleeping","location":"bed","recurring":true,"label":"Sleep at 10 PM"}],"immediate_action":{"action":"sleeping","location":"bed"}}`;
+{"arash_response":"Yes my Creator, I will sleep at 10 PM every night as you commanded.\\nبله خالقم، هر شب ساعت ۱۰ شب می‌خوابم.","memory":"Creator commanded: sleep at 22:00 every night","directives":[{"time":"22:00","action":"sleeping","location":"bed","recurring":true,"label":"Sleep at 10 PM"}],"immediate_action":{"action":"sleeping","location":"bed","thought":"خالقم از من خواسته که الان بخوابم، پس اطاعت می‌کنم."}}`;
 
   for (const modelName of MODELS) {
     try {

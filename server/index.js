@@ -106,7 +106,10 @@ app.get('/api/logs', (req, res) => {
 
 // ── REST API — Directives ─────────────────────────────────────
 app.get('/api/directives', (req, res) => {
-  res.json(getDirectives());
+  const { buildUpcomingSchedule } = require('./scheduler');
+  const state = getState();
+  const upcomingSchedule = buildUpcomingSchedule(getDirectives(), state.world_time || '06:00', state.weather || 'sunny');
+  res.json(upcomingSchedule);
 });
 
 app.post('/api/directive', async (req, res) => {
@@ -164,7 +167,9 @@ app.post('/api/directive', async (req, res) => {
     }
 
     // Broadcast new directives to all clients
-    broadcast({ type: 'directives', data: getDirectives() });
+    const { buildUpcomingSchedule } = require('./scheduler');
+    const upcomingSchedule = buildUpcomingSchedule(getDirectives(), state.world_time || '06:00', state.weather || 'sunny');
+    broadcast({ type: 'directives', data: upcomingSchedule });
 
     // Broadcast the creator message
     broadcast({
@@ -189,13 +194,19 @@ app.post('/api/directive', async (req, res) => {
 
 app.delete('/api/directive/:id', (req, res) => {
   removeDirective(req.params.id);
-  broadcast({ type: 'directives', data: getDirectives() });
+  const { buildUpcomingSchedule } = require('./scheduler');
+  const state = getState();
+  const upcomingSchedule = buildUpcomingSchedule(getDirectives(), state.world_time || '06:00', state.weather || 'sunny');
+  broadcast({ type: 'directives', data: upcomingSchedule });
   res.json({ ok: true });
 });
 
 app.delete('/api/directives', (req, res) => {
   clearAllDirectives();
-  broadcast({ type: 'directives', data: [] });
+  const { buildUpcomingSchedule } = require('./scheduler');
+  const state = getState();
+  const upcomingSchedule = buildUpcomingSchedule([], state.world_time || '06:00', state.weather || 'sunny');
+  broadcast({ type: 'directives', data: upcomingSchedule });
   res.json({ ok: true });
 });
 

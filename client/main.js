@@ -206,10 +206,14 @@ function applyState(d) {
     if (d.world_time) {
       const [h, m] = d.world_time.split(':').map(Number);
       const serverHour = h + m / 60;
-      // Only snap if server is ahead or significantly different (fixes jitter)
-      if (Math.abs(serverHour - worldHour) > 0.02 || serverHour > worldHour) {
+      // Only snap worldHour if server differs by more than 2 world-minutes (0.033h).
+      // Smaller differences are ignored — local animation clock interpolates smoothly.
+      // This prevents the double-refresh / backward-jump glitch on tick boundaries.
+      const diff = serverHour - worldHour;
+      if (Math.abs(diff) > 0.034) {
         worldHour = serverHour;
       }
+      // Always update the HUD text display from server source-of-truth
       hud.setTime(d.world_time, h);
     }
   villager.setState(d);

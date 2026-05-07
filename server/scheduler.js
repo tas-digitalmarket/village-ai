@@ -121,6 +121,9 @@ async function runTick(broadcast) {
 
     logWeather(weather, newWorldTime);
 
+    // Build upcoming schedule FIRST so we can pass it to Gemini
+    const upcomingSchedule = buildUpcomingSchedule(directives, newWorldTime, weather);
+
     // ── Check for Creator directives first ──────────────────────
     let decision = null;
     const directive = findDirectiveForTime(newWorldTime);
@@ -139,7 +142,7 @@ async function runTick(broadcast) {
         hunger_delta: directive.action === 'eating' ? -15 : 2,
         new_mood: 'content',
         memory: `Creator commanded: ${directive.label} at ${newWorldTime}`,
-        thought: 'My Creator has asked this of me... I will obey.'
+        thought: 'خالقم از من خواسته... اطاعت می‌کنم.'
       };
 
       if (!directive.recurring) {
@@ -152,7 +155,7 @@ async function runTick(broadcast) {
         firedDirectives.clear();
         console.log('[Scheduler] 🌅 New day — recurring directives reset');
       }
-      decision = await askGemini(state, memories, weather, newWorldTime);
+      decision = await askGemini(state, memories, weather, newWorldTime, upcomingSchedule);
     }
 
     const prevTime = state.world_time || '06:00';
@@ -186,8 +189,7 @@ async function runTick(broadcast) {
       addMemory(decision.memory);
     }
 
-    // Build upcoming schedule to broadcast with state
-    const upcomingSchedule = buildUpcomingSchedule(directives, newWorldTime, weather);
+    // Build upcoming schedule to broadcast with state (already built above, just pass it down)
     const { GEMINI_API_KEY } = require('./config');
 
     broadcast({
