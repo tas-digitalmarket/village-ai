@@ -10,10 +10,9 @@ const { generateWeather } = require('./weather');
 let tickCount = 0;
 const firedDirectives = new Set();
 
-// World time advances 10 real minutes per tick
-// Tick runs every 20 real seconds → 10 world-minutes per 20s
-// 60 seconds (1 real min) = 30 world-minutes (Same speed as before, but 3x more intelligence checks)
-const WORLD_MINUTES_PER_TICK = 10;
+// World time advances 30 real minutes per tick
+// Tick runs every 60 real seconds → 30 world-minutes per 60s
+const WORLD_MINUTES_PER_TICK = 30;
 
 function getFallbackAction(h, weather, state) {
   const isInside = state.position_z < -5;
@@ -211,9 +210,9 @@ async function runTick(broadcast) {
 }
 
 function startScheduler(broadcast) {
-  // Run every 20 real seconds for high responsiveness (3 requests per minute)
-  const intervalMs = 20000; 
-  console.log(`[Scheduler] High-frequency intelligence: Every 20s — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
+  // Run every 60 real seconds for lower API usage (1 request per minute) to prevent 429 Rate Limits
+  const intervalMs = 60000; 
+  console.log(`[Scheduler] Intelligence: Every 60s — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
 
   // First tick after 5 seconds to reduce join wait time
   setTimeout(() => runTick(broadcast), 5000);
