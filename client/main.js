@@ -205,7 +205,11 @@ let wsConnected = false;
 function applyState(d) {
   if (d.world_time) {
     const [h, m] = d.world_time.split(':').map(Number);
-    worldHour = h + m / 60;
+    const serverHour = h + m / 60;
+    // Only snap if the difference is significant (>2 mins) to avoid micro-jumps
+    if (Math.abs(worldHour - serverHour) > 0.04) {
+      worldHour = serverHour;
+    }
     hud.setTime(d.world_time, h);
   }
   villager.setState(d);
@@ -321,9 +325,10 @@ function animate() {
     controls.maxDistance = 70;
   }
 
-  // World clock: The server advances 30 game minutes (0.5 hours) every 1 real minute (60 seconds).
-  // Therefore, 1 real second = 0.5 / 60 world hours.
-  worldHour += delta * (0.5 / 60);
+  // World clock interpolation:
+  // Server is 30 game-mins per 60 real-seconds (0.5 hrs/min).
+  // We interpolate slightly slower (0.48) so the server tick (every 20s) always pushes us forward.
+  worldHour += delta * (0.48 / 60);
   if (worldHour >= 24) worldHour = 0;
 
   // Smoothly update HUD time so user sees minutes passing

@@ -82,14 +82,15 @@ ROUTINE: ${routineHint}
 MEMORIES: ${memText}
 
 CRITICAL RULES:
-1. You SHOULD follow the ROUTINE. However, if you choose to 'idle' or 'sitting' instead of the scheduled task, you MUST justify this decision in your 'thought' and 'memory' (e.g., 'I feel too tired for wood-chopping right now, I will rest instead').
-2. Only return JSON.
+1. You SHOULD follow the ROUTINE. However, if you choose to 'idle' or 'sitting' instead of the scheduled task, you MUST justify this decision in your 'thought' and 'memory'.
+2. You MUST write 'thought' and 'memory' in PERSIAN (Farsi).
+3. Only return JSON.
 
 LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8)
 VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, running_to_shelter, sitting, fishing, tending_animals, checking_motorcycle, wandering
 
 JSON format (copy this structure exactly):
-{"action":"eating","target_location":"table","target_position":{"x":0.5,"z":-0.5},"duration":15,"energy_delta":3,"hunger_delta":-15,"new_mood":"content","memory":"Arash ate breakfast.","thought":"Food gives me strength for the day."}`;
+{"action":"eating","target_location":"table","target_position":{"x":0.5,"z":-0.5},"duration":15,"energy_delta":3,"hunger_delta":-15,"new_mood":"content","memory":"آرش صبحانه خورد.","thought":"غذا به من برای شروع روز قدرت می‌دهد."}`;
 
   for (const modelName of MODELS) {
     try {
