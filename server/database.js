@@ -102,8 +102,8 @@ function findDirectiveForTime(worldTime) {
     if (!d.time) return false;
     const [dh, dm] = d.time.split(':').map(Number);
     const dirMinutes = dh * 60 + dm;
-    // Match within a 14-minute window (just under one tick)
-    return Math.abs(worldMinutes - dirMinutes) <= 14;
+    // Match within a 5-minute window (since ticks are now every 10 game-minutes)
+    return Math.abs(worldMinutes - dirMinutes) <= 5;
   }) || null;
 }
 

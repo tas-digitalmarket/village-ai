@@ -10,11 +10,10 @@ const { generateWeather } = require('./weather');
 let tickCount = 0;
 const firedDirectives = new Set();
 
-// World time advances 30 real minutes per tick
-// Tick runs every 1 real minute → 30 world-minutes per real minute
-// So 1 full day (24h) = 48 ticks = 48 real minutes
-// (User asked: "1 real minute = 1 game second" — interpreted as fast world time)
-const WORLD_MINUTES_PER_TICK = 30;
+// World time advances 10 real minutes per tick
+// Tick runs every 20 real seconds → 10 world-minutes per 20s
+// 60 seconds (1 real min) = 30 world-minutes (Same speed as before, but 3x more intelligence checks)
+const WORLD_MINUTES_PER_TICK = 10;
 
 function getFallbackAction(h, weather, state) {
   const isInside = state.position_z < -5;
@@ -210,15 +209,15 @@ async function runTick(broadcast) {
 }
 
 function startScheduler(broadcast) {
-  // Run every 1 real minute (world time advances 30 min per tick = 48 ticks per day)
-  const interval = parseInt(process.env.TICK_INTERVAL || '1');
-  console.log(`[Scheduler] Heartbeat every ${interval} min — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
+  // Run every 20 real seconds for high responsiveness (3 requests per minute)
+  const intervalMs = 20000; 
+  console.log(`[Scheduler] High-frequency intelligence: Every 20s — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
 
-  // First tick after 10 seconds
-  setTimeout(() => runTick(broadcast), 10000);
+  // First tick after 5 seconds to reduce join wait time
+  setTimeout(() => runTick(broadcast), 5000);
 
-  // Then every 1 minute
-  cron.schedule(`*/${interval} * * * *`, () => runTick(broadcast));
+  // Use setInterval for sub-minute accuracy
+  setInterval(() => runTick(broadcast), intervalMs);
 }
 
 async function catchUpSimulation(broadcast) {
