@@ -82,7 +82,7 @@ ROUTINE: ${routineHint}
 MEMORIES: ${memText}
 
 CRITICAL RULES:
-1. You MUST follow the ROUTINE exactly. Do NOT do an action (like eating breakfast) before its scheduled time.
+1. You SHOULD follow the ROUTINE. However, if you choose to 'idle' or 'sitting' instead of the scheduled task, you MUST justify this decision in your 'thought' and 'memory' (e.g., 'I feel too tired for wood-chopping right now, I will rest instead').
 2. Only return JSON.
 
 LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8)
