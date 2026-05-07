@@ -82,8 +82,8 @@ ROUTINE: ${routineHint}
 MEMORIES: ${memText}
 
 CRITICAL RULES:
-1. You SHOULD follow the ROUTINE. However, if you choose to 'idle' or 'sitting' instead of the scheduled task, you MUST justify this decision in your 'thought' and 'memory'.
-2. You MUST write 'thought' and 'memory' in PERSIAN (Farsi).
+1. You SHOULD follow the ROUTINE. However, if you choose to 'idle' or 'sitting' instead of the scheduled task, you MUST justify this decision in your 'thought' and 'memory' (e.g., 'I feel too tired for wood-chopping right now, I will rest instead').
+2. You MUST write the 'thought' and 'memory' fields in PERSIAN (Farsi) language.
 3. Only return JSON.
 
 LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8)
@@ -192,14 +192,14 @@ function buildFallbackAction(state, weather, overrideTime) {
 
   const pos = LOCATIONS[loc] || { x: 0, z: 0 };
   const thoughts = {
-    sleeping: 'Goodnight. Tomorrow brings more work.',
-    praying: 'Alhamdulillah. I am grateful.',
-    eating: 'Food is a blessing from God.',
-    watering_crops: 'The soil is thirsty.',
-    chopping_wood: 'Hard work builds strength.',
-    harvesting: 'A good harvest, thank God.',
-    sitting: 'A moment of peace.',
-    running_to_shelter: 'The rain is coming — get inside!'
+    sleeping: 'شب بخیر. فردا کارهای زیادی داریم.',
+    praying: 'الحمدلله. شکرگزار هستم.',
+    eating: 'غذا برکتی از طرف خداست.',
+    watering_crops: 'زمین تشنه است.',
+    chopping_wood: 'کار سخت بدن را قوی می‌کند.',
+    harvesting: 'محصول خوبی داریم، خدایا شکرت.',
+    sitting: 'لحظه‌ای آرامش.',
+    running_to_shelter: 'باران می‌آید، باید به خانه بروم!'
   };
 
   return {

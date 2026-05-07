@@ -5,11 +5,11 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { buildWorld } from './world.js?v=6';
-import { Villager } from './character.js?v=6';
-import { WeatherFX } from './weather-fx.js?v=6';
-import { HUD } from './hud.js?v=6';
-import { CreatorPanel } from './creator.js?v=6';
+import { buildWorld } from './world.js?v=4';
+import { Villager } from './character.js?v=4';
+import { WeatherFX } from './weather-fx.js?v=4';
+import { HUD } from './hud.js?v=4';
+import { CreatorPanel } from './creator.js?v=4';
 
 // ── Renderer ─────────────────────────────────────────────────
 const canvas = document.getElementById('world-canvas');
@@ -203,15 +203,15 @@ let wsReconnectDelay = 2000;
 let wsConnected = false;
 
 function applyState(d) {
-  if (d.world_time) {
-    const [h, m] = d.world_time.split(':').map(Number);
-    const serverHour = h + m / 60;
-    // Only snap if the difference is significant (>2 mins) to avoid micro-jumps
-    if (Math.abs(worldHour - serverHour) > 0.04) {
-      worldHour = serverHour;
+    if (d.world_time) {
+      const [h, m] = d.world_time.split(':').map(Number);
+      const serverHour = h + m / 60;
+      // Only snap if server is ahead or significantly different (fixes jitter)
+      if (Math.abs(serverHour - worldHour) > 0.02 || serverHour > worldHour) {
+        worldHour = serverHour;
+      }
+      hud.setTime(d.world_time, h);
     }
-    hud.setTime(d.world_time, h);
-  }
   villager.setState(d);
   if (d.weather) weatherFX.setWeather(d.weather);
   hud.update(d);
@@ -325,10 +325,9 @@ function animate() {
     controls.maxDistance = 70;
   }
 
-  // World clock interpolation:
-  // Server is 30 game-mins per 60 real-seconds (0.5 hrs/min).
-  // We interpolate slightly slower (0.48) so the server tick (every 20s) always pushes us forward.
-  worldHour += delta * (0.48 / 60);
+  // World clock: The server advances 30 game minutes (0.5 hours) every 1 real minute (60 seconds).
+  // Therefore, 1 real second = 0.5 / 60 world hours.
+  worldHour += delta * (0.5 / 60);
   if (worldHour >= 24) worldHour = 0;
 
   // Smoothly update HUD time so user sees minutes passing
