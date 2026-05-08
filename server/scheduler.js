@@ -210,9 +210,10 @@ async function runTick(broadcast) {
 }
 
 function startScheduler(broadcast) {
-  // Run every 60 real seconds for lower API usage (1 request per minute) to prevent 429 Rate Limits
-  const intervalMs = 60000; 
-  console.log(`[Scheduler] Intelligence: Every 60s — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
+  // Read TICK_INTERVAL from .env (in minutes), default to 5 minutes to prevent 429 Rate Limits
+  const tickMinutes = parseInt(process.env.TICK_INTERVAL) || 5;
+  const intervalMs = tickMinutes * 60 * 1000; 
+  console.log(`[Scheduler] Intelligence: Every ${tickMinutes}m — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
 
   // First tick after 5 seconds to reduce join wait time
   setTimeout(() => runTick(broadcast), 5000);
