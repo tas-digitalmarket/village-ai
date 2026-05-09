@@ -218,6 +218,11 @@ function startScheduler(broadcast) {
   const intervalMs = tickMinutes * 60 * 1000; 
   console.log(`[Scheduler] Intelligence: Every ${tickMinutes}m — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
 
+  // Catch up persisted world time after deploy restarts or free-instance sleep.
+  catchUpSimulation(broadcast).catch(err => {
+    console.error('[Scheduler] Catch-up failed:', err.message);
+  });
+
   // First tick after 5 seconds to reduce join wait time
   setTimeout(() => runTick(broadcast), 5000);
 
@@ -233,8 +238,8 @@ async function catchUpSimulation(broadcast) {
   const elapsedMs = now - lastTime;
   const elapsedMin = Math.floor(elapsedMs / 1000 / 60);
 
-  // 1 tick = 1 real minute
-  let ticksToCatchUp = Math.floor(elapsedMin / 1);
+  const tickMinutes = parseInt(process.env.TICK_INTERVAL) || 5;
+  let ticksToCatchUp = Math.floor(elapsedMin / tickMinutes);
   if (ticksToCatchUp <= 0) {
     console.log('[Scheduler] ✨ No catch-up needed.');
     return;
@@ -272,7 +277,7 @@ async function catchUpSimulation(broadcast) {
       current_action: fb.action,
       position_x: fb.pos.x,
       position_z: fb.pos.z,
-      timestamp: new Date(lastTime + (i+1)*60*1000).toISOString()
+      timestamp: new Date(lastTime + (i + 1) * tickMinutes * 60 * 1000).toISOString()
     };
   }
 
