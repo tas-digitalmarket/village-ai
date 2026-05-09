@@ -1,10 +1,9 @@
 // config.js — Global configuration and API keys
 module.exports = {
-  // Google AI Studio key (Gemini native SDK - free tier)
-  // Key stored split to avoid secret scanning
-  GEMINI_API_KEY: process.env.GEMINI_API_KEY || ['AIzaSyBJyKK_', 'My5qxHSuyfZMlwuzPJKa0I5IJtk'].join(''),
+  // SambaNova Cloud API Key
+  SAMBANOVA_API_KEY: process.env.SAMBANOVA_API_KEY || process.env.GEMINI_API_KEY || '337c8305-e3f1-43c7-9ded-56dd19f9fa1d',
 
-  // Model priorities (gemini-2.0-flash is best free model)
-  PRIMARY_MODEL:  'gemini-2.0-flash',
-  FALLBACK_MODEL: 'gemini-1.5-flash'
+  // SambaNova Models
+  PRIMARY_MODEL: 'Meta-Llama-3.3-70B-Instruct',
+  FALLBACK_MODEL: 'DeepSeek-V3.1'
 };

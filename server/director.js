@@ -1,12 +1,13 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { GEMINI_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
+const { SAMBANOVA_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY, { apiVersion: 'v1' });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-2.0-flash'];
+const MODELS = [PRIMARY_MODEL, FALLBACK_MODEL];
 
 function extractJSON(text) {
-  const stripped = text.replace(/```(?:json)?[\s\S]*?```/g, t =>
+  // Strip DeepSeek <think> blocks
+  let stripped = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+  stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, t =>
     t.replace(/```(?:json)?/gi, '').replace(/```/g, '')
   ).trim();
   const match = stripped.match(/\{[\s\S]*\}/);
@@ -17,7 +18,7 @@ function extractJSON(text) {
 async function processDirective(message, state, memories) {
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No memories yet.';
 
-  const prompt = `تو آرش هستی؛ یک ویلیجر خودمختار در یک دهکده مجازی.
+  const systemPrompt = `تو آرش هستی؛ یک ویلیجر خودمختار در یک دهکده مجازی.
 خالق تو (Creator) مستقیماً با تو صحبت کرده است.
 به شدت به نظم و برنامه‌ریزی اهمیت می‌دهی، از تنهایی و سکوت لذت می‌بری. به عنوان آرش، باید پیام خالق را تحلیل کنی.
 Output ONLY a raw JSON object. No markdown, no explanation.
@@ -43,9 +44,29 @@ JSON format:
 
   for (const modelName of MODELS) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(prompt);
-      const text = result.response.text().trim();
+      const response = await fetch('https://api.sambanova.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SAMBANOVA_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: 'Parse the creator command and output JSON.' }
+          ],
+          temperature: 0.1,
+          top_p: 0.1
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      const text = data.choices[0].message.content;
       const parsed = extractJSON(text);
 
       // Ensure bilingual — add Persian if missing
@@ -58,20 +79,25 @@ JSON format:
 
     } catch (err) {
       const msg = err.message || String(err);
-      console.error(`[Director] ${modelName} ERROR:`, msg.slice(0, 200));
+      const statusCode = msg.match(/HTTP (\d{3})/) ? parseInt(msg.match(/HTTP (\d{3})/)[1]) : 0;
 
-      const is403 = msg.includes('403') || msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('permission');
-      if (is403) { console.error(`[Director] ❌ API KEY INVALID for ${modelName}`); continue; }
+      console.error(`[Director] ${modelName} ERROR: `, msg.slice(0, 120));
 
-      const is429 = msg.includes('429') || msg.toLowerCase().includes('quota');
-      if (is429) { await sleep(3000); continue; }
+      if (statusCode === 401 || statusCode === 403) {
+        console.error(`[Director] ❌ API KEY INVALID for ${modelName}`);
+        continue;
+      }
+      if (statusCode === 429) {
+        await sleep(3000);
+        continue;
+      }
       continue;
     }
   }
 
   return {
     arash_response: 'Yes, my Creator. I have heard and will remember your words.\nبله خالقم، سخنت را شنیدم و به یاد خواهم سپرد.',
-    memory: `Creator command: ${message.slice(0, 60)}`,
+    memory: \`Creator command: \${message.slice(0, 60)}\`,
     directives: [],
     immediate_action: null
   };
