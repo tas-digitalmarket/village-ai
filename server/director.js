@@ -3,7 +3,7 @@ const { GEMINI_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY, { apiVersion: 'v1' });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-1.5-flash'];
+const MODELS = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3-flash-preview'];
 
 function extractJSON(text) {
   const stripped = text.replace(/```(?:json)?[\s\S]*?```/g, t =>
