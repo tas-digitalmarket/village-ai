@@ -176,19 +176,8 @@ export class HUD {
       if (isCreator) {
         li.querySelector('.sched-del').addEventListener('click', async (e) => {
           const id = e.target.dataset.id;
-          const headers = new Headers();
-          const token = localStorage.getItem('creatorToken');
-          if (token) headers.set('X-Creator-Token', token);
-
-          const res = await fetch(`/api/directive/${id}`, { method: 'DELETE', headers });
-          if (res.status === 401) {
-            const nextToken = prompt('Creator token required');
-            if (!nextToken) return;
-            localStorage.setItem('creatorToken', nextToken);
-            headers.set('X-Creator-Token', nextToken);
-            const retry = await fetch(`/api/directive/${id}`, { method: 'DELETE', headers });
-            if (!retry.ok) return;
-          } else if (!res.ok) {
+          const res = await fetch(`/api/directive/${id}`, { method: 'DELETE' });
+          if (!res.ok) {
             return;
           }
           li.remove();
