@@ -3,6 +3,7 @@ export class CreatorPanel {
   constructor(onDirectivesUpdate) {
     this.onDirectivesUpdate = onDirectivesUpdate;
     this.isOpen = false;
+    this._sendInProgress = false;
     this._buildPanel();
     this._loadHistory();
   }
@@ -22,10 +23,13 @@ export class CreatorPanel {
     this.$closeBtn = document.getElementById('creator-close');
 
     if (this.$send) {
-      this.$send.addEventListener('pointerdown', (e) => {
+      const handleSend = (e) => {
         e.preventDefault();
         this._sendMessage();
-      });
+      };
+      this.$send.addEventListener('mousedown', handleSend);
+      this.$send.addEventListener('click', handleSend);
+      this.$send.addEventListener('touchstart', handleSend);
     }
     if (this.$input) {
       this.$input.addEventListener('keydown', (e) => {
@@ -54,8 +58,9 @@ export class CreatorPanel {
 
   async _sendMessage() {
     const text = this.$input?.value?.trim();
-    if (!text) return;
+    if (!text || this._sendInProgress) return;
 
+    this._sendInProgress = true;
     this.$input.value = '';
     this.$input.disabled = true;
     this.$send.disabled = true;
@@ -89,6 +94,7 @@ export class CreatorPanel {
       this.$input.disabled = false;
       this.$send.disabled = false;
       this.$send.textContent = 'Send';
+      this._sendInProgress = false;
       this.$input.focus();
     }
   }
