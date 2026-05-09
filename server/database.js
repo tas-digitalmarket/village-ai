@@ -4,10 +4,48 @@ const FileSync = require('lowdb/adapters/FileSync');
 const path = require('path');
 const fs   = require('fs');
 
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
+const RENDER_DATA_DIR = '/data/village';
+const DATA_DIR = process.env.DATA_DIR ||
+  (process.env.RENDER && fs.existsSync('/data') ? RENDER_DATA_DIR : path.join(__dirname, '../data'));
 const DB_FILE  = path.join(DATA_DIR, 'village.json');
 
 let db;
+
+const WORLD_MINUTES_PER_TICK = 30;
+
+function advanceTime(currentTime, minutesToAdd) {
+  const [h = 6, m = 0] = String(currentTime || '06:00').split(':').map(Number);
+  const total = h * 60 + m + minutesToAdd;
+  const daysAdded = Math.floor(total / (24 * 60));
+  const dayMinutes = ((total % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const nh = Math.floor(dayMinutes / 60);
+  const nm = dayMinutes % 60;
+  return {
+    world_time: `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`,
+    daysAdded
+  };
+}
+
+function catchUpStateFromTimestamp(state) {
+  if (!state || !state.timestamp) return state;
+
+  const tickMinutes = parseInt(process.env.TICK_INTERVAL) || 5;
+  const elapsedMs = Date.now() - new Date(state.timestamp).getTime();
+  if (!Number.isFinite(elapsedMs) || elapsedMs < tickMinutes * 60 * 1000) return state;
+
+  const ticks = Math.min(Math.floor(elapsedMs / (tickMinutes * 60 * 1000)), 48);
+  if (ticks <= 0) return state;
+
+  const advanced = advanceTime(state.world_time, ticks * WORLD_MINUTES_PER_TICK);
+  const nextState = {
+    ...state,
+    world_time: advanced.world_time,
+    day: (state.day || 1) + advanced.daysAdded,
+    timestamp: new Date(new Date(state.timestamp).getTime() + ticks * tickMinutes * 60 * 1000).toISOString()
+  };
+  db.set('agent_state', nextState).write();
+  return nextState;
+}
 
 function initDatabase() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -42,7 +80,7 @@ function initDatabase() {
 
 // ── Agent State ─────────────────────────────────────────────────
 function getState() {
-  return db.get('agent_state').value() || {};
+  return catchUpStateFromTimestamp(db.get('agent_state').value() || {});
 }
 
 function saveState(newState) {
