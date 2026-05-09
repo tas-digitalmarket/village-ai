@@ -1,7 +1,7 @@
 {
   "name": "village-ai",
   "version": "1.0.0",
-  "description": "3D Simulated World with Autonomous AI Agent powered by Gemini",
+  "description": "3D simulated world with an autonomous AI villager powered by OpenRouter or SambaNova",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

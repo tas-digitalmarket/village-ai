@@ -1,184 +1,85 @@
-# 🌍 دنیای آرش — Village AI
+# دنیای آرش - Village AI
 
-یک دنیای مجازی سه‌بعدی با یک مرد روستایی که توسط **Gemini AI** زندگی می‌کند.
+یک شبیه‌ساز سه‌بعدی روستایی با یک کاراکتر خودمختار به نام آرش. کلاینت با Three.js ساخته شده، سرور با Express و WebSocket وضعیت را زنده به مرورگر می‌فرستد، و تصمیم‌های آرش از طریق OpenRouter یا SambaNova گرفته می‌شود.
 
-## ✨ ویژگی‌ها
+## ویژگی‌ها
 
-- 🎮 رندر سه‌بعدی با **Three.js** (مزرعه، کلبه، درخت، چاه، حصار)
-- 🤖 تصمیم‌گیری هوشمند با **Gemini 1.5 Flash**
-- 💾 ذخیره وضعیت مداوم در **SQLite**
-- 🌐 ارتباط Real-time با **WebSocket**
-- 🌦️ سیستم آب‌وهوای تصادفی (آفتابی، ابری، بارانی، مه‌آلود، طوفانی)
-- 🌅 چرخه کامل روز و شب
-- 📜 حافظه و خاطرات پایدار
+- رندر سه‌بعدی با Three.js
+- ارتباط زنده با WebSocket
+- ذخیره وضعیت و خاطرات با lowdb در فایل JSON
+- چرخه روز و شب، آب‌وهوا، انرژی، گرسنگی و خاطرات
+- پنل Creator برای فرستادن دستورهای فوری یا زمان‌بندی‌شده
+- fallback داخلی وقتی سرویس AI در دسترس نیست
 
----
+## راه‌اندازی
 
-## 🚀 راه‌اندازی سریع
-
-### ۱. پیش‌نیازها
-- Node.js 18+
-- Gemini API Key (رایگان از [Google AI Studio](https://aistudio.google.com))
-
-### ۲. نصب
 ```bash
-cd village-ai
 npm install
-```
-
-### ۳. تنظیم محیط
-```bash
 copy .env.example .env
-```
-فایل `.env` را باز کنید و API Key خود را وارد کنید:
-```
-GEMINI_API_KEY=AIza...your_key_here
-```
-
-### ۴. اجرا
-```bash
 npm run dev
-# یا برای production:
-npm start
 ```
 
-مرورگر را باز کنید: **http://localhost:3000**
+بعد از اجرا، برنامه روی این آدرس در دسترس است:
 
----
-
-## 🧑‍🌾 مدل سه‌بعدی واقعی‌تر (اختیاری)
-
-برای استفاده از مدل GLB واقعی به جای مدل هندسی ساده:
-
-1. به [Mixamo.com](https://www.mixamo.com) بروید (رایگان با حساب Adobe)
-2. یک کاراکتر انتخاب کنید
-3. انیمیشن‌های زیر را دانلود کنید: Idle, Walking, Running
-4. فایل‌ها را در `client/models/villager.glb` ذخیره کنید
-
----
-
-## 🌐 استقرار — Render.com (رایگان)
-
-### گام ۱: آپلود روی GitHub
-```bash
-git init && git add . && git commit -m "init"
-git remote add origin https://github.com/YOUR_USER/village-ai.git
-git push -u origin main
+```text
+http://localhost:3000
 ```
 
-### گام ۲: ساخت سرویس در Render
-1. به [render.com](https://render.com) بروید
-2. **New → Web Service**
-3. ریپوزیتوری GitHub خود را انتخاب کنید
-4. تنظیمات:
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-   - **Environment**: Node
-5. در **Environment Variables** اضافه کنید:
-   - `GEMINI_API_KEY` = your key
+## متغیرهای محیطی
 
-### گام ۳: جلوگیری از sleep (مهم!)
-پلن رایگان Render بعد از ۱۵ دقیقه می‌خوابد. برای جلوگیری:
-1. به [uptimerobot.com](https://uptimerobot.com) بروید (رایگان)
-2. یک Monitor جدید بسازید
-3. URL: `https://your-app.onrender.com/health`
-4. هر ۵ دقیقه یکبار ping کند
+فایل `.env.example` را به `.env` کپی کنید و مقدارهای لازم را تنظیم کنید.
 
----
-
-## 🏛️ استقرار — Oracle Cloud Always Free (توصیه‌شده)
-
-### گام ۱: ساخت VM رایگان
-1. ثبت‌نام در [oracle.com/cloud/free](https://www.oracle.com/cloud/free)
-2. Compute → Create Instance → **Always Free** ARM
-
-### گام ۲: نصب Node.js روی VM
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
+```env
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+SAMBANOVA_API_KEY=your_sambanova_api_key_here
+CREATOR_TOKEN=change_me_to_a_long_random_secret
+DEBUG_ENABLED=false
+PORT=3000
+TICK_INTERVAL=5
 ```
 
-### گام ۳: اجرا با PM2
-```bash
-npm install -g pm2
-cd village-ai
-npm install
-pm2 start server/index.js --name village-ai
-pm2 save && pm2 startup
-```
+برای تصمیم‌گیری AI یکی از این دو کلید کافی است: `OPENROUTER_API_KEY` یا `SAMBANOVA_API_KEY`. اگر هیچ‌کدام مقدار نداشته باشند، برنامه با fallback داخلی ادامه می‌دهد.
 
-### گام ۴: اتصال دامنه شخصی
+`CREATOR_TOKEN` در محیط production اجباری است. وقتی تنظیم شود، عملیات تغییر دستورها و مسیرهای debug فقط با هدر `X-Creator-Token` یا `Authorization: Bearer <token>` پذیرفته می‌شوند. در رابط کاربری، اگر توکن لازم باشد، مرورگر آن را می‌پرسد و در `localStorage` نگه می‌دارد.
 
-**نصب Nginx:**
-```bash
-sudo apt install nginx
-sudo nano /etc/nginx/sites-available/village-ai
-```
+`DEBUG_ENABLED` به طور پیش‌فرض خاموش است. برای فعال کردن مسیرهای `/api/debug/logs` و `/api/debug/test-ai` باید مقدار آن `true` باشد.
 
-محتوای فایل:
-```nginx
-server {
-    listen 80;
-    server_name yourdomain.com www.yourdomain.com;
+## ساختار پروژه
 
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-```bash
-sudo ln -s /etc/nginx/sites-available/village-ai /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl restart nginx
-```
-
-**SSL رایگان با Let's Encrypt:**
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
-```
-
-**DNS تنظیم دامنه:**
-در پنل DNS دامنه‌تان یک **A Record** بسازید:
-- Name: `@` (یا `www`)
-- Value: IP عمومی سرور Oracle شما
-
----
-
-## 📁 ساختار پروژه
-
-```
+```text
 village-ai/
-├── server/
-│   ├── index.js        # Express + WebSocket
-│   ├── database.js     # SQLite wrapper
-│   ├── gemini.js       # Gemini API connector
-│   ├── scheduler.js    # Heartbeat (هر ۵ دقیقه)
-│   └── weather.js      # آب‌وهوای تصادفی
-├── client/
-│   ├── index.html
-│   ├── style.css
-│   ├── main.js         # Three.js scene
-│   ├── world.js        # مزرعه و کلبه
-│   ├── character.js    # مدل و انیمیشن آرش
-│   ├── weather-fx.js   # افکت‌های آب‌وهوا
-│   └── hud.js          # رابط کاربری
-├── data/               # پوشه SQLite (auto-created)
-├── .env                # API Key
-└── package.json
+  client/
+    index.html
+    main.js
+    world.js
+    character.js
+    weather-fx.js
+    hud.js
+    creator.js
+  server/
+    index.js
+    database.js
+    gemini.js
+    director.js
+    scheduler.js
+    weather.js
+    config.js
+  data/
+    village.json
 ```
 
----
+## مسیرهای اصلی API
 
-## 🔧 متغیرهای محیطی
+- `GET /api/state` وضعیت فعلی، خاطرات و اطلاعات نمایشی را برمی‌گرداند.
+- `GET /api/directives` برنامه پیش‌رو را برمی‌گرداند.
+- `POST /api/directive` پیام Creator را پردازش می‌کند و دستور می‌سازد.
+- `DELETE /api/directive/:id` یک دستور را حذف می‌کند.
+- `DELETE /api/directives` همه دستورها را حذف می‌کند.
+- `GET /health` وضعیت سلامت سرور را برمی‌گرداند.
 
-| متغیر | توضیح | پیش‌فرض |
-|-------|-------|---------|
-| `GEMINI_API_KEY` | **اجباری** — کلید API | — |
-| `PORT` | پورت سرور | `3000` |
-| `TICK_INTERVAL` | فاصله تیک‌ها (دقیقه) | `5` |
+## نکات امنیتی
+
+- هیچ کلید API نباید داخل کد commit شود.
+- در production حتما `CREATOR_TOKEN` را تنظیم کنید.
+- مسیرهای debug را فقط موقت و در محیط امن فعال کنید.
+- اگر قبلا کلید API داخل کد یا تست‌ها بوده، آن کلید را در OpenRouter باطل و یک کلید تازه بسازید.

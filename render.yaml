@@ -12,6 +12,14 @@ services:
         value: "5"
       - key: DATA_DIR
         value: /data/village
+      - key: DEBUG_ENABLED
+        value: "false"
+      - key: SAMBANOVA_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CREATOR_TOKEN
+        sync: false
     disk:
       name: village-data
       mountPath: /data/village

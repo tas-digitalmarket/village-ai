@@ -1,103 +1,183 @@
-const { SAMBANOVA_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
+const {
+  OPENROUTER_API_KEY,
+  SAMBANOVA_API_KEY,
+  PRIMARY_MODEL,
+  FALLBACK_MODEL,
+  SAMBANOVA_PRIMARY_MODEL,
+  SAMBANOVA_FALLBACK_MODEL
+} = require('./config');
+
+const VALID_ACTIONS = [
+  'idle', 'walking', 'chopping_wood', 'watering_crops', 'harvesting',
+  'eating', 'sleeping', 'sitting', 'fishing', 'tending_animals',
+  'checking_motorcycle', 'wandering', 'tending_crops'
+];
+
+const VALID_LOCATIONS = [
+  'home', 'bed', 'table', 'east_field', 'west_field', 'well',
+  'wood_stump', 'haystack', 'path_center', 'fishing_spot', 'motorcycle'
+];
+
+const PROVIDERS = [
+  {
+    name: 'OpenRouter',
+    key: OPENROUTER_API_KEY,
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+    models: [PRIMARY_MODEL, FALLBACK_MODEL],
+    headers: {
+      'HTTP-Referer': 'https://village-ai-g0xj.onrender.com',
+      'X-Title': 'Village AI'
+    }
+  },
+  {
+    name: 'SambaNova',
+    key: SAMBANOVA_API_KEY,
+    endpoint: 'https://api.sambanova.ai/v1/chat/completions',
+    models: [SAMBANOVA_PRIMARY_MODEL, SAMBANOVA_FALLBACK_MODEL],
+    headers: {}
+  }
+].filter(p => p.key && p.key !== 'MISSING_KEY');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const MODELS = [PRIMARY_MODEL, FALLBACK_MODEL];
 
 function extractJSON(text) {
-  // Strip DeepSeek <think> blocks
-  let stripped = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-
-  stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, t =>
-    t.replace(/```(?:json)?/gi, '').replace(/```/g, '')
+  let stripped = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, block =>
+    block.replace(/```(?:json)?/gi, '').replace(/```/g, '')
   ).trim();
+
   const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON in response');
+  if (!match) throw new Error('No JSON object in AI response');
   return JSON.parse(match[0]);
 }
 
+function normalizeDirectiveResult(parsed, message) {
+  const directives = Array.isArray(parsed.directives)
+    ? parsed.directives
+      .filter(d => d && VALID_ACTIONS.includes(d.action) && VALID_LOCATIONS.includes(d.location) && /^\d{2}:\d{2}$/.test(d.time || ''))
+      .map(d => ({
+        time: d.time,
+        action: d.action,
+        location: d.location,
+        recurring: Boolean(d.recurring),
+        label: String(d.label || d.action).slice(0, 80)
+      }))
+    : [];
+
+  let immediate = null;
+  if (parsed.immediate_action && VALID_ACTIONS.includes(parsed.immediate_action.action) && VALID_LOCATIONS.includes(parsed.immediate_action.location)) {
+    immediate = {
+      action: parsed.immediate_action.action,
+      location: parsed.immediate_action.location,
+      thought: parsed.immediate_action.thought || 'خالق از من خواسته همین حالا کاری انجام بدهم؛ پس انجامش می‌دهم.'
+    };
+  }
+
+  let response = parsed.arash_response || 'Yes, my Creator. I heard you.\nبله خالقم، شنیدم و به یاد می‌سپارم.';
+  if (!/[\u0600-\u06FF]/.test(response)) {
+    response += '\nبله خالقم، شنیدم و به یاد می‌سپارم.';
+  }
+  if (!/[A-Za-z]/.test(response)) {
+    response = `Yes, my Creator. I heard you.\n${response}`;
+  }
+
+  return {
+    arash_response: response,
+    memory: parsed.memory || `Creator command: ${message.slice(0, 80)}`,
+    directives,
+    immediate_action: immediate
+  };
+}
+
+async function callProvider(provider, model, messages) {
+  const response = await fetch(provider.endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${provider.key}`,
+      'Content-Type': 'application/json',
+      ...provider.headers
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.2,
+      top_p: 0.8,
+      max_tokens: 800
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
 async function processDirective(message, state, memories) {
-  const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No memories yet.';
+  const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'هنوز خاطره مهمی ثبت نشده است.';
 
-  const systemPrompt = `تو آرش هستی؛ یک ویلیجر خودمختار در یک دهکده مجازی.
-خالق تو (Creator) مستقیماً با تو صحبت کرده است.
-به شدت به نظم و برنامه‌ریزی اهمیت می‌دهی، از تنهایی و سکوت لذت می‌بری. به عنوان آرش، باید پیام خالق را تحلیل کنی.
-Output ONLY a raw JSON object. No markdown, no explanation.
+  const systemPrompt = `تو آرش هستی؛ یک روستایی خودمختار، آرام و وظیفه‌شناس.
+Creator مستقیم با تو حرف زده است. باید پیام او را بفهمی، محترمانه جواب بدهی، و اگر دستور زمان‌دار یا فوری دارد آن را به ساختار قابل اجرا تبدیل کنی.
 
-CREATOR MESSAGE: "${message}"
-YOUR STATE: Time ${state.world_time} | Action: ${state.current_action} | Mood: ${state.mood}
-MEMORIES: ${memText}
+پیام Creator:
+"${message}"
 
-Parse the Creator's message and:
-- Extract time-based commands → add to directives array
-- "daily"/"every day"/"هر روز"/"روزانه" → recurring: true
-- "now"/"الان"/"فوری" → immediate_action
-- No time mentioned → directives: []
+وضعیت فعلی:
+- زمان: ${state.world_time || '06:00'}
+- کار فعلی: ${state.current_action || 'idle'}
+- حال‌وهوا: ${state.mood || 'content'}
 
-VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, sitting, fishing, tending_animals, checking_motorcycle, wandering
-VALID LOCATIONS: home, bed, table, east_field, west_field, well, wood_stump, haystack, path_center, fishing_spot, motorcycle
+خاطرات اخیر:
+${memText}
 
-CRITICAL: arash_response MUST have BOTH English AND Persian separated by newline.
-CRITICAL: If immediate_action is needed, it MUST include 'action', 'location', and a 'thought' (in Persian, reflecting Arash's obedience or reaction).
+قواعد:
+- اگر پیام زمان مشخص دارد، آن را داخل directives بگذار.
+- اگر پیام شامل daily، every day، هر روز، روزانه، هر شب یا هر صبح بود recurring را true کن.
+- اگر پیام شامل now، right now، الان، همین الان، فوری یا همین حالا بود immediate_action بساز.
+- اگر پیام فقط گفتگو بود و دستور اجرایی نداشت، directives خالی باشد.
+- پاسخ arash_response باید دو خط داشته باشد: خط اول انگلیسی، خط دوم فارسی.
+- فقط JSON خام بده؛ markdown یا توضیح اضافه ننویس.
 
-JSON format:
-{"arash_response":"Yes my Creator, I will sleep at 10 PM every night as you commanded.\\nبله خالقم، هر شب ساعت ۱۰ شب می‌خوابم.","memory":"Creator commanded: sleep at 22:00 every night","directives":[{"time":"22:00","action":"sleeping","location":"bed","recurring":true,"label":"Sleep at 10 PM"}],"immediate_action":{"action":"sleeping","location":"bed","thought":"خالقم از من خواسته که الان بخوابم، پس اطاعت می‌کنم."}}`;
+اکشن‌های معتبر:
+${VALID_ACTIONS.join(', ')}
 
-  for (const modelName of MODELS) {
-    try {
-      const response = await fetch('https://api.sambanova.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SAMBANOVA_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: 'Parse the creator command and output JSON.' }
-          ],
-          temperature: 0.1,
-          top_p: 0.1
-        })
-      });
+لوکیشن‌های معتبر:
+${VALID_LOCATIONS.join(', ')}
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+فرمت:
+{
+  "arash_response": "Yes, my Creator. I will water the east field every morning at 09:00.\\nبله خالقم، هر صبح ساعت ۰۹:۰۰ مزرعه شرقی را آبیاری می‌کنم.",
+  "memory": "Creator asked Arash to water the east field every morning.",
+  "directives": [
+    {"time":"09:00","action":"watering_crops","location":"east_field","recurring":true,"label":"Water the east field"}
+  ],
+  "immediate_action": null
+}`;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: 'پیام Creator را تحلیل کن و فقط JSON معتبر بده.' }
+  ];
+
+  for (const provider of PROVIDERS) {
+    for (const model of provider.models.filter(Boolean)) {
+      try {
+        const text = await callProvider(provider, model, messages);
+        const parsed = normalizeDirectiveResult(extractJSON(text), message);
+        console.log(`[Director:${provider.name}:${model}] directive parse ok`);
+        return parsed;
+      } catch (err) {
+        const msg = err.message || String(err);
+        console.error(`[Director:${provider.name}] ${model} failed:`, msg.slice(0, 180));
+        if (msg.includes('HTTP 429')) await sleep(1500);
       }
-
-      const data = await response.json();
-      const text = data.choices[0].message.content;
-      const parsed = extractJSON(text);
-
-      // Ensure bilingual — add Persian if missing
-      if (parsed.arash_response && !/[\u0600-\u06FF]/.test(parsed.arash_response)) {
-        parsed.arash_response += '\nبله خالقم، اطاعت می‌کنم.';
-      }
-
-      console.log(`[Director:${modelName}] ✅ Bilingual response ready`);
-      return parsed;
-
-    } catch (err) {
-      const msg = err.message || String(err);
-      const statusCode = msg.match(/HTTP (\d{3})/) ? parseInt(msg.match(/HTTP (\d{3})/)[1]) : 0;
-
-      console.error(`[Director] ${modelName} ERROR: `, msg.slice(0, 120));
-
-      if (statusCode === 401 || statusCode === 403) {
-        console.error(`[Director] ❌ API KEY INVALID for ${modelName}`);
-        continue;
-      }
-      if (statusCode === 429) {
-        await sleep(3000);
-        continue;
-      }
-      continue;
     }
   }
 
   return {
-    arash_response: 'Yes, my Creator. I have heard and will remember your words.\nبله خالقم، سخنت را شنیدم و به یاد خواهم سپرد.',
-    memory: \`Creator command: \${message.slice(0, 60)}\`,
+    arash_response: 'Yes, my Creator. I heard you and will remember your words.\nبله خالقم، حرفت را شنیدم و به یاد می‌سپارم.',
+    memory: `Creator command: ${message.slice(0, 80)}`,
     directives: [],
     immediate_action: null
   };

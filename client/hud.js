@@ -176,7 +176,21 @@ export class HUD {
       if (isCreator) {
         li.querySelector('.sched-del').addEventListener('click', async (e) => {
           const id = e.target.dataset.id;
-          await fetch(`/api/directive/${id}`, { method: 'DELETE' });
+          const headers = new Headers();
+          const token = localStorage.getItem('creatorToken');
+          if (token) headers.set('X-Creator-Token', token);
+
+          const res = await fetch(`/api/directive/${id}`, { method: 'DELETE', headers });
+          if (res.status === 401) {
+            const nextToken = prompt('Creator token required');
+            if (!nextToken) return;
+            localStorage.setItem('creatorToken', nextToken);
+            headers.set('X-Creator-Token', nextToken);
+            const retry = await fetch(`/api/directive/${id}`, { method: 'DELETE', headers });
+            if (!retry.ok) return;
+          } else if (!res.ok) {
+            return;
+          }
           li.remove();
           if (this.$schedList.querySelectorAll('.schedule-item--creator').length === 0) {
             // Routine items remain, no need to show empty state

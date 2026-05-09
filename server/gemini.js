@@ -1,10 +1,11 @@
-const { SAMBANOVA_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
-
-if (!SAMBANOVA_API_KEY || SAMBANOVA_API_KEY === 'MISSING_KEY') {
-  console.warn('[AI] ⚠️ WARNING: SAMBANOVA_API_KEY is not set!');
-} else {
-  console.log('[AI] ✅ API Key loaded:', SAMBANOVA_API_KEY.slice(0, 10) + '...');
-}
+const {
+  OPENROUTER_API_KEY,
+  SAMBANOVA_API_KEY,
+  PRIMARY_MODEL,
+  FALLBACK_MODEL,
+  SAMBANOVA_PRIMARY_MODEL,
+  SAMBANOVA_FALLBACK_MODEL
+} = require('./config');
 
 const LOCATIONS = {
   home:         { x: 0,    z: -5.5  },
@@ -21,207 +22,277 @@ const LOCATIONS = {
   fence_north:  { x: 0,    z: 11    }
 };
 
-const MODELS = [PRIMARY_MODEL, FALLBACK_MODEL];
+const VALID_ACTIONS = [
+  'idle', 'walking', 'chopping_wood', 'watering_crops', 'harvesting',
+  'eating', 'sleeping', 'running_to_shelter', 'sitting', 'fishing',
+  'tending_animals', 'checking_motorcycle', 'wandering', 'tending_crops'
+];
+
+const PROVIDERS = [
+  {
+    name: 'OpenRouter',
+    key: OPENROUTER_API_KEY,
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+    models: [PRIMARY_MODEL, FALLBACK_MODEL],
+    headers: {
+      'HTTP-Referer': 'https://village-ai-g0xj.onrender.com',
+      'X-Title': 'Village AI'
+    }
+  },
+  {
+    name: 'SambaNova',
+    key: SAMBANOVA_API_KEY,
+    endpoint: 'https://api.sambanova.ai/v1/chat/completions',
+    models: [SAMBANOVA_PRIMARY_MODEL, SAMBANOVA_FALLBACK_MODEL],
+    headers: {}
+  }
+].filter(p => p.key && p.key !== 'MISSING_KEY');
+
+if (PROVIDERS.length === 0) {
+  console.warn('[AI] WARNING: No AI API key is set. Using local fallback decisions.');
+} else {
+  console.log(`[AI] Provider ready: ${PROVIDERS[0].name} (${PROVIDERS[0].key.slice(0, 10)}...)`);
+}
 
 let isAIBusy = false;
 
 function extractJSON(text) {
-  // Strip DeepSeek <think> blocks
-  let stripped = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-  
-  stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, t =>
-    t.replace(/```(?:json)?/gi, '').replace(/```/g, '')
+  let stripped = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, block =>
+    block.replace(/```(?:json)?/gi, '').replace(/```/g, '')
   ).trim();
+
   const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON in response');
+  if (!match) throw new Error('No JSON object in AI response');
   return JSON.parse(match[0]);
 }
 
+function clampNumber(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeDecision(parsed, state, weather, timeStr) {
+  const action = VALID_ACTIONS.includes(parsed.action) ? parsed.action : 'idle';
+  const targetLocation = LOCATIONS[parsed.target_location] ? parsed.target_location : chooseFallbackLocation(action, weather);
+
+  return {
+    thought: parsed.thought || buildFallbackAction(state, weather, timeStr).thought,
+    action,
+    target_location: targetLocation,
+    target_position: LOCATIONS[targetLocation] || { x: state.position_x || 0, z: state.position_z || 0 },
+    duration: clampNumber(parsed.duration, 20, 5, 90),
+    energy_delta: clampNumber(parsed.energy_delta, 0, -30, 30),
+    hunger_delta: clampNumber(parsed.hunger_delta, 0, -40, 30),
+    new_mood: parsed.new_mood || state.mood || 'content',
+    memory: parsed.memory || `آرش در ساعت ${timeStr} تصمیم گرفت ${action} انجام دهد.`
+  };
+}
+
+function chooseFallbackLocation(action, weather) {
+  if (weather === 'rainy' || weather === 'stormy') return 'home';
+  if (action === 'sleeping') return 'bed';
+  if (action === 'eating') return 'table';
+  if (action === 'watering_crops' || action === 'harvesting') return 'east_field';
+  if (action === 'tending_crops') return 'west_field';
+  if (action === 'chopping_wood') return 'wood_stump';
+  if (action === 'fishing') return 'fishing_spot';
+  if (action === 'checking_motorcycle') return 'motorcycle';
+  return 'path_center';
+}
+
+async function callProvider(provider, model, messages, temperature = 0.35) {
+  const response = await fetch(provider.endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${provider.key}`,
+      'Content-Type': 'application/json',
+      ...provider.headers
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature,
+      top_p: 0.85,
+      max_tokens: 650
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
 async function askGemini(state, memories, weather, overrideTime, upcomingSchedule) {
-  // If AI is already running for a previous tick, skip and use fallback
   if (isAIBusy) {
-    console.warn('[AI] Skipping tick — previous AI call still running. Using smart fallback.');
+    console.warn('[AI] Previous AI call still running. Using local fallback for this tick.');
     return buildFallbackAction(state, weather, overrideTime);
   }
 
   isAIBusy = true;
   try {
-    return await _callAI(state, memories, weather, overrideTime, upcomingSchedule);
+    return await callAI(state, memories, weather, overrideTime, upcomingSchedule);
   } finally {
     isAIBusy = false;
   }
 }
 
-async function _callAI(state, memories, weather, overrideTime, upcomingSchedule) {
+async function callAI(state, memories, weather, overrideTime, upcomingSchedule) {
   const timeStr = overrideTime || state.world_time || '08:00';
-  const [hh, mm] = timeStr.split(':').map(Number);
-  const h = hh + (mm / 60);
+  const memText = memories.slice(0, 7).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'هنوز خاطره مهمی ثبت نشده است.';
+  const schedText = upcomingSchedule && upcomingSchedule.length > 0
+    ? upcomingSchedule.map(s => `- ${s.time}: ${s.label || s.action} (${s.action}, ${s.source || 'routine'})`).join('\n')
+    : 'فعلا برنامه مشخصی باقی نمانده است.';
 
-  const memText = memories.slice(0, 6).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No memories yet.';
-  const schedText = upcomingSchedule && upcomingSchedule.length > 0 
-    ? upcomingSchedule.map(s => `- ${s.time}: ${s.label} (${s.action})`).join('\n')
-    : 'No specific schedule right now.';
+  const systemPrompt = `تو آرش هستی؛ یک روستایی خودمختار در یک شبیه‌ساز سه‌بعدی.
 
-  const systemPrompt = `تو آرش هستی؛ یک ویلیجر خودمختار در یک دهکده مجازی. 
-تو ربات نیستی، بلکه یک انسان با ویژگی‌های خاص هستی: به شدت به نظم و برنامه‌ریزی اهمیت می‌دهی، از تنهایی و سکوت لذت می‌بری، اما وقتی سطح Hunger تو بالا می‌رود، تحریک‌پذیر و کمی تندخو می‌شوی. 
-اگر کاری در جدول زمان‌بندی (Schedule) باقی مانده باشد، احساس وظیفه‌شناسی تو باعث می‌شود استراحت را به تعویق بیندازی، مگر اینکه واقعاً انرژی نداشته باشی (زیر 10 درصد).
-اول از همه شرایط را به زبان اول‌شخص بسنج (فیلد thought)، و سپس تصمیمت را بگیر (فیلد action).
+شخصیت آرش:
+- آرام، وظیفه‌شناس، کمی درون‌گرا و اهل برنامه‌ریزی است.
+- به مزرعه، خانه کوچک، موتور قدیمی و سکوت عصر علاقه دارد.
+- وقتی گرسنه می‌شود زود بی‌حوصله می‌شود، و وقتی انرژی‌اش کم است تصمیم‌های ساده‌تر می‌گیرد.
+- کورکورانه کار تکراری انجام نمی‌دهد؛ از خاطرات اخیر یاد می‌گیرد.
+- اگر هوا بارانی یا طوفانی باشد، بیرون ماندن را فقط برای کار ضروری می‌پذیرد.
 
-ENVIRONMENTAL VARIABLES:
-- Time: ${timeStr}
-- Weather: ${weather}
-- Energy: ${state.energy}%
-- Hunger: ${state.hunger}%
-- Mood: ${state.mood}
+وضعیت فعلی:
+- زمان: ${timeStr}
+- هوا: ${weather}
+- انرژی: ${state.energy} از 100
+- گرسنگی: ${state.hunger} از 100
+- حال‌وهوا: ${state.mood || 'content'}
+- کار فعلی: ${state.current_action || 'idle'}
 
-UPCOMING SCHEDULE:
+برنامه پیش رو:
 ${schedText}
 
-RECENT MEMORIES (What you did recently):
+خاطرات اخیر:
 ${memText}
 
-PRIORITY LOGIC:
-1. Vital needs (If Energy < 10, MUST sleep at bed. If Hunger > 85, MUST eat at table).
-2. Schedule tasks (Check UPCOMING SCHEDULE).
-3. Free activities based on Mood (wandering, sitting, checking_motorcycle, fishing) if nothing else is pressing.
+اولویت تصمیم:
+1. نیاز حیاتی: اگر انرژی کمتر از 10 است حتما بخواب. اگر گرسنگی بیشتر از 85 است حتما غذا بخور.
+2. دستور Creator و برنامه نزدیک را جدی بگیر.
+3. اگر اخیرا همان کار را انجام داده‌ای، فقط در صورت ضرورت تکرارش کن.
+4. تصمیم باید با زمان روز، هوا، انرژی، گرسنگی و خاطرات سازگار باشد.
 
-CRITICAL RULES:
-1. Output ONLY a raw JSON object. No markdown, no explanation.
-2. If you recently did a task (check RECENT MEMORIES), do not repeat it immediately unless necessary.
-3. The 'thought' field MUST be in Persian (Farsi) and written in the first person (e.g., "ساعت ۱۰ صبحه و هوا آفتابی، انرژی خوبی دارم پس بهتره به جای استراحت برم سراغ آبیاری.").
-4. The 'memory' field MUST also be in Persian.
+فقط JSON خام بده. هیچ markdown یا توضیح اضافه ننویس.
+فیلد thought و memory باید فارسی، طبیعی و اول‌شخص/روایی باشند.
 
-LOCATIONS: home(0,0), bed(0,0.2), east_field(10,0), west_field(-10,0), well(0,10), wood_stump(5,5), haystack(-5,5), path_center(0,0), fishing_spot(-10,-10), table(0.5,-0.5), motorcycle(8,-8)
-VALID ACTIONS: idle, walking, chopping_wood, watering_crops, harvesting, eating, sleeping, running_to_shelter, sitting, fishing, tending_animals, checking_motorcycle, wandering
+اکشن‌های معتبر:
+${VALID_ACTIONS.join(', ')}
 
-JSON format (copy this structure exactly):
+لوکیشن‌های معتبر:
+${Object.keys(LOCATIONS).join(', ')}
+
+فرمت دقیق:
 {
-  "thought": "گشنمه و یکم خسته‌ام. وقت ناهاره، بهتره برم خونه چیزی بخورم.",
-  "action": "eating",
-  "target_location": "table",
-  "target_position": {"x":0.5,"z":-0.5},
-  "duration": 15,
-  "energy_delta": 3,
-  "hunger_delta": -15,
-  "new_mood": "content",
-  "memory": "آرش ناهار خورد."
+  "thought": "الان هوا آرام است و هنوز انرژی دارم؛ بهتر است قبل از ظهر سراغ آبیاری مزرعه بروم.",
+  "action": "watering_crops",
+  "target_location": "east_field",
+  "duration": 30,
+  "energy_delta": -5,
+  "hunger_delta": 4,
+  "new_mood": "focused",
+  "memory": "آرش پیش از ظهر به مزرعه شرقی رفت و محصولات را آبیاری کرد."
 }`;
 
-  for (const modelName of MODELS) {
-    try {
-      const response = await fetch('https://api.sambanova.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SAMBANOVA_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: 'What is your next action based on the environment? Output ONLY JSON.' }
-          ],
-          temperature: 0.1,
-          top_p: 0.1
-        })
-      });
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: 'بر اساس وضعیت فعلی تصمیم بعدی آرش را فقط به صورت JSON بده.' }
+  ];
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+  for (const provider of PROVIDERS) {
+    for (const model of provider.models.filter(Boolean)) {
+      try {
+        const text = await callProvider(provider, model, messages);
+        const parsed = normalizeDecision(extractJSON(text), state, weather, timeStr);
+        console.log(`[AI:${provider.name}:${model}] ${parsed.action} @ ${parsed.target_location} | ${parsed.thought}`);
+        return parsed;
+      } catch (err) {
+        const msg = err.message || String(err);
+        console.error(`[AI:${provider.name}] ${model} failed:`, msg.slice(0, 180));
       }
-
-      const data = await response.json();
-      const text = data.choices[0].message.content;
-      const parsed = extractJSON(text);
-
-      if (parsed.target_location && LOCATIONS[parsed.target_location]) {
-        parsed.target_position = LOCATIONS[parsed.target_location];
-      } else if (!parsed.target_position) {
-        parsed.target_position = { x: state.position_x || 0, z: state.position_z || 0 };
-      }
-
-      console.log(`[AI:${modelName}] ✅ ${parsed.action} @ ${parsed.target_location} | 💭 ${parsed.thought}`);
-      return parsed;
-
-    } catch (err) {
-      const msg = err.message || String(err);
-      const statusCode = msg.match(/HTTP (\d{3})/) ? parseInt(msg.match(/HTTP (\d{3})/)[1]) : 0;
-
-      console.error(`[AI] ${modelName} HTTP ${statusCode}: `, msg.slice(0, 120));
-
-      if (statusCode === 401 || statusCode === 403) {
-        console.error(`[AI] ❌ API key invalid or API not enabled for ${modelName} — trying next model`);
-        continue;
-      }
-      if (statusCode === 429) {
-        console.warn(`[AI] ${modelName} rate limited — trying next model immediately`);
-        continue;
-      }
-      continue;
     }
   }
 
-  console.warn('[AI] All models exhausted — using smart fallback for this tick');
-  return buildFallbackAction(state, weather, overrideTime);
+  console.warn('[AI] All providers failed. Using local fallback.');
+  return buildFallbackAction(state, weather, timeStr);
 }
 
 function buildFallbackAction(state, weather, overrideTime) {
   const timeStr = overrideTime || state.world_time || '08:00';
-  const [hh] = timeStr.split(':').map(Number);
-  
-  if (weather === 'rainy' && state.energy < 80) {
+  const [hh, mm = 0] = timeStr.split(':').map(Number);
+  const hour = hh + mm / 60;
+
+  if ((weather === 'rainy' || weather === 'stormy') && (state.position_z || 0) > -5) {
     return {
       action: 'running_to_shelter',
       target_location: 'home',
       target_position: LOCATIONS.home,
       duration: 15,
-      energy_delta: 2,
-      hunger_delta: -5,
-      new_mood: 'grumpy',
-      memory: 'آرش برای فرار از باران به پناهگاه رفت.',
-      thought: 'بارون داره شدیدتر میشه، بهتره سریع برم زیر سقف.'
+      energy_delta: -2,
+      hunger_delta: 2,
+      new_mood: 'worried',
+      memory: 'آرش با دیدن بدتر شدن هوا به خانه پناه برد.',
+      thought: 'هوا دارد بدتر می‌شود؛ بهتر است خودم را به خانه برسانم.'
     };
   }
 
-  if (state.energy < 20 || hh >= 22 || hh < 6) {
+  if ((state.energy || 80) < 20 || hour >= 22 || hour < 6) {
     return {
       action: 'sleeping',
       target_location: 'bed',
       target_position: LOCATIONS.bed,
-      duration: 30,
+      duration: 45,
       energy_delta: 15,
-      hunger_delta: -5,
-      new_mood: 'content',
-      memory: 'آرش خوابید.',
-      thought: 'خیلی خسته‌ام، وقت خوابه.'
+      hunger_delta: 4,
+      new_mood: 'tired',
+      memory: 'آرش برای بازیابی انرژی کمی خوابید.',
+      thought: 'بدنم خسته است و وقت استراحت رسیده؛ باید بخوابم.'
     };
   }
 
-  if (state.hunger > 80) {
+  if ((state.hunger || 20) > 80) {
     return {
       action: 'eating',
       target_location: 'table',
       target_position: LOCATIONS.table,
-      duration: 15,
-      energy_delta: 5,
+      duration: 20,
+      energy_delta: 4,
       hunger_delta: -25,
       new_mood: 'content',
-      memory: 'آرش غذا خورد.',
-      thought: 'دیگه نمی‌تونم تمرکز کنم، باید یه چیزی بخورم.'
+      memory: 'آرش پشت میز نشست و غذای ساده‌ای خورد.',
+      thought: 'گرسنگی تمرکزم را گرفته؛ بهتر است اول چیزی بخورم.'
+    };
+  }
+
+  if (hour >= 8 && hour < 11) {
+    return {
+      action: 'watering_crops',
+      target_location: 'east_field',
+      target_position: LOCATIONS.east_field,
+      duration: 30,
+      energy_delta: -5,
+      hunger_delta: 4,
+      new_mood: 'focused',
+      memory: 'آرش صبح را با رسیدگی به مزرعه شرقی گذراند.',
+      thought: 'صبح برای مزرعه وقت خوبی است؛ قبل از گرم شدن روز باید به محصولات برسم.'
     };
   }
 
   return {
-    action: 'idle',
+    action: 'wandering',
     target_location: 'path_center',
     target_position: LOCATIONS.path_center,
-    duration: 15,
-    energy_delta: -1,
-    hunger_delta: -2,
-    new_mood: 'bored',
-    memory: 'آرش استراحت کوتاهی کرد.',
-    thought: 'فعلاً کار خاصی ندارم، یکم استراحت می‌کنم.'
+    duration: 20,
+    energy_delta: -2,
+    hunger_delta: 2,
+    new_mood: 'peaceful',
+    memory: 'آرش کمی در مسیر میان مزرعه قدم زد و اوضاع را زیر نظر گرفت.',
+    thought: 'فعلا کار فوری ندارم؛ کمی قدم می‌زنم و به کارهای بعدی فکر می‌کنم.'
   };
 }
 
-module.exports = { askGemini };
+module.exports = { askGemini, LOCATIONS };

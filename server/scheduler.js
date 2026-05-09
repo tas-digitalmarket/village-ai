@@ -189,7 +189,10 @@ async function runTick(broadcast) {
     }
 
     // Build upcoming schedule to broadcast with state (already built above, just pass it down)
-    const { GEMINI_API_KEY } = require('./config');
+    const { OPENROUTER_API_KEY, SAMBANOVA_API_KEY } = require('./config');
+    const hasAiKey =
+      (OPENROUTER_API_KEY && OPENROUTER_API_KEY !== 'MISSING_KEY') ||
+      (SAMBANOVA_API_KEY && SAMBANOVA_API_KEY !== 'MISSING_KEY');
 
     broadcast({
       type: 'state',
@@ -198,7 +201,7 @@ async function runTick(broadcast) {
         thought: decision.thought,
         memories: getMemories(5),
         upcomingSchedule,
-        apiKeyMissing: !GEMINI_API_KEY || GEMINI_API_KEY === 'MISSING_KEY'
+        apiKeyMissing: !hasAiKey
       }
     });
 

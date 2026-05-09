@@ -62,7 +62,7 @@ export class CreatorPanel {
     this._addMessage('creator', text, true);
 
     try {
-      const res = await fetch('/api/directive', {
+      const res = await this._fetchWithCreatorToken('/api/directive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text })
@@ -125,6 +125,22 @@ export class CreatorPanel {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/\n/g, '<br>');
+  }
+
+  async _fetchWithCreatorToken(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const token = localStorage.getItem('creatorToken');
+    if (token) headers.set('X-Creator-Token', token);
+
+    let res = await fetch(url, { ...options, headers });
+    if (res.status !== 401) return res;
+
+    const nextToken = prompt('Creator token required');
+    if (!nextToken) return res;
+
+    localStorage.setItem('creatorToken', nextToken);
+    headers.set('X-Creator-Token', nextToken);
+    return fetch(url, { ...options, headers });
   }
 
   // Called from WebSocket when a new message arrives

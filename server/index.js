@@ -12,6 +12,7 @@ const {
 } = require('./database');
 const { startScheduler } = require('./scheduler');
 const { processDirective } = require('./director');
+const { OPENROUTER_API_KEY, SAMBANOVA_API_KEY, CREATOR_TOKEN, DEBUG_ENABLED } = require('./config');
 
 const app    = express();
 const server = http.createServer(app);
@@ -42,6 +43,36 @@ console.error = (...args) => {
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client')));
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getRequestToken(req) {
+  const auth = req.get('authorization') || '';
+  if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
+  return req.get('x-creator-token') || '';
+}
+
+function requireCreatorAuth(req, res, next) {
+  if (!CREATOR_TOKEN) {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ error: 'CREATOR_TOKEN is required in production' });
+    }
+    return next();
+  }
+
+  if (getRequestToken(req) !== CREATOR_TOKEN) {
+    return res.status(401).json({ error: 'Creator token is required' });
+  }
+
+  next();
+}
 
 // ── WebSocket ──────────────────────────────────────────────────
 const clients = new Set();
@@ -112,7 +143,7 @@ app.get('/api/directives', (req, res) => {
   res.json(upcomingSchedule);
 });
 
-app.post('/api/directive', async (req, res) => {
+app.post('/api/directive', requireCreatorAuth, async (req, res) => {
   const { message } = req.body;
   if (!message || !message.trim()) {
     return res.status(400).json({ error: 'Message is required' });
@@ -192,7 +223,7 @@ app.post('/api/directive', async (req, res) => {
   }
 });
 
-app.delete('/api/directive/:id', (req, res) => {
+app.delete('/api/directive/:id', requireCreatorAuth, (req, res) => {
   removeDirective(req.params.id);
   const { buildUpcomingSchedule } = require('./scheduler');
   const state = getState();
@@ -201,7 +232,7 @@ app.delete('/api/directive/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/api/directives', (req, res) => {
+app.delete('/api/directives', requireCreatorAuth, (req, res) => {
   clearAllDirectives();
   const { buildUpcomingSchedule } = require('./scheduler');
   const state = getState();
@@ -215,21 +246,35 @@ app.get('/api/creator-messages', (req, res) => {
   res.json(getCreatorMessages(30));
 });
 
-app.get('/api/debug/logs', (req, res) => {
-  const apiKey = process.env.GEMINI_API_KEY || '';
+app.get('/api/debug/logs', requireCreatorAuth, (req, res) => {
+  if (!DEBUG_ENABLED) {
+    return res.status(404).json({ error: 'Debug logs are disabled' });
+  }
+  const apiKey = OPENROUTER_API_KEY && OPENROUTER_API_KEY !== 'MISSING_KEY'
+    ? OPENROUTER_API_KEY
+    : SAMBANOVA_API_KEY && SAMBANOVA_API_KEY !== 'MISSING_KEY'
+      ? SAMBANOVA_API_KEY
+      : '';
   const maskedKey = apiKey ? apiKey.slice(0, 10) + '...' : 'MISSING';
+  const escapedLogs = serverLogs.map(escapeHtml).join('\n');
   res.send(`
     <html><body style="background:#000;color:#0f0;font-family:monospace;padding:20px;">
-      <h2>Village AI Server Logs (Key: ${maskedKey})</h2>
-      <pre>${serverLogs.join('\n')}</pre>
+      <h2>Village AI Server Logs (Key: ${escapeHtml(maskedKey)})</h2>
+      <pre>${escapedLogs}</pre>
       <script>setTimeout(() => location.reload(), 5000);</script>
     </body></html>
   `);
 });
 
-app.get('/api/debug/test-ai', async (req, res) => {
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY is missing' });
+app.get('/api/debug/test-ai', requireCreatorAuth, async (req, res) => {
+  if (!DEBUG_ENABLED) {
+    return res.status(404).json({ error: 'Debug AI test is disabled' });
+  }
+  const hasAiKey =
+    (OPENROUTER_API_KEY && OPENROUTER_API_KEY !== 'MISSING_KEY') ||
+    (SAMBANOVA_API_KEY && SAMBANOVA_API_KEY !== 'MISSING_KEY');
+  if (!hasAiKey) {
+    return res.status(500).json({ error: 'AI API key is missing' });
   }
   try {
     const { askGemini } = require('./gemini');
