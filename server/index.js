@@ -143,7 +143,7 @@ app.get('/api/directives', (req, res) => {
   res.json(upcomingSchedule);
 });
 
-app.post('/api/directive', requireCreatorAuth, async (req, res) => {
+app.post('/api/directive', async (req, res) => {
   const { message } = req.body;
   if (!message || !message.trim()) {
     return res.status(400).json({ error: 'Message is required' });
@@ -223,7 +223,7 @@ app.post('/api/directive', requireCreatorAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/directive/:id', requireCreatorAuth, (req, res) => {
+app.delete('/api/directive/:id', (req, res) => {
   removeDirective(req.params.id);
   const { buildUpcomingSchedule } = require('./scheduler');
   const state = getState();
@@ -232,7 +232,7 @@ app.delete('/api/directive/:id', requireCreatorAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/api/directives', requireCreatorAuth, (req, res) => {
+app.delete('/api/directives', (req, res) => {
   clearAllDirectives();
   const { buildUpcomingSchedule } = require('./scheduler');
   const state = getState();
