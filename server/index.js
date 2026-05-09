@@ -216,9 +216,11 @@ app.get('/api/creator-messages', (req, res) => {
 });
 
 app.get('/api/debug/logs', (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  const maskedKey = apiKey ? apiKey.slice(0, 10) + '...' : 'MISSING';
   res.send(`
     <html><body style="background:#000;color:#0f0;font-family:monospace;padding:20px;">
-      <h2>Village AI Server Logs</h2>
+      <h2>Village AI Server Logs (Key: ${maskedKey})</h2>
       <pre>${serverLogs.join('\n')}</pre>
       <script>setTimeout(() => location.reload(), 5000);</script>
     </body></html>
