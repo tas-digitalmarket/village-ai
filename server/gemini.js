@@ -34,7 +34,10 @@ const LOCATIONS = {
 
 // These models are supported on this specific API key
 const MODELS = [
-  'gemini-flash-latest'
+  'gemini-flash-latest',
+  'gemini-2.5-flash',
+  'gemini-3-flash-preview',
+  'gemini-2.0-flash'
 ];
 
 // Global concurrency lock — prevents overlapping AI calls eating rate limit
@@ -144,8 +147,8 @@ JSON format (copy this structure exactly):
 
       // Hard stop — invalid key or no API access
       if (statusCode === 400 || statusCode === 403) {
-        console.error('[AI] ❌ API key invalid or API not enabled — using fallback permanently');
-        break;
+        console.error(`[AI] ❌ API key invalid or API not enabled for ${modelName} — trying next model`);
+        continue;
       }
       // Rate limited — NO retry, skip to next model or fallback immediately
       if (statusCode === 429) {

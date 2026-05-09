@@ -3,7 +3,7 @@ const { GEMINI_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL } = require('./config');
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY, { apiVersion: 'v1' });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const MODELS = ['gemini-flash-latest'];
+const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-2.0-flash'];
 
 function extractJSON(text) {
   const stripped = text.replace(/```(?:json)?[\s\S]*?```/g, t =>
@@ -61,7 +61,7 @@ JSON format:
       console.error(`[Director] ${modelName} ERROR:`, msg.slice(0, 200));
 
       const is403 = msg.includes('403') || msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('permission');
-      if (is403) { console.error('[Director] ❌ API KEY INVALID'); break; }
+      if (is403) { console.error(`[Director] ❌ API KEY INVALID for ${modelName}`); continue; }
 
       const is429 = msg.includes('429') || msg.toLowerCase().includes('quota');
       if (is429) { await sleep(3000); continue; }
