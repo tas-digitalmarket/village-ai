@@ -40,6 +40,41 @@ const PROVIDERS = [
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+function isConversationOnly(message) {
+  const text = String(message || '').toLowerCase();
+  const commandHints = [
+    'every day', 'daily', 'at ', 'now', 'right now',
+    'هر روز', 'روزانه', 'ساعت', 'الان', 'همین الان', 'فوری',
+    'برو', 'انجام بده', 'آبیاری', 'بخواب', 'بخور', 'برداشت', 'چوب'
+  ];
+  return !commandHints.some(hint => text.includes(hint));
+}
+
+function buildLocalConversation(message, state = {}) {
+  const clean = String(message || '').trim();
+  const time = state.world_time || '06:00';
+  const mood = state.mood || 'آرام';
+  const short = clean.length > 80 ? `${clean.slice(0, 77)}...` : clean;
+
+  let response;
+  if (/سلام|درود|hello|hi/i.test(clean)) {
+    response = `سلام خالقم. صدایت را می‌شنوم؛ الان ساعت ${time} است و با حواسی جمع کنار مزرعه می‌مانم.`;
+  } else if (/چطوری|حالت|خوبی|how are/i.test(clean)) {
+    response = `حالم ${mood} است. کمی به هوا و کارهای امروز نگاه می‌کنم و سعی می‌کنم تصمیم بعدی را عاقلانه بگیرم.`;
+  } else if (/هوشمند|فکر|باهوش|تصمیم/i.test(clean)) {
+    response = 'می‌فهمم. از این به بعد فقط تکرار نمی‌کنم؛ زمان، هوا، گرسنگی، انرژی و خاطره‌های تازه را با هم می‌سنجم.';
+  } else {
+    response = `شنیدم خالقم: «${short}». آن را به خاطر می‌سپارم و در تصمیم‌های بعدی حسابش می‌کنم.`;
+  }
+
+  return {
+    arash_response: response,
+    memory: `Creator told Arash: ${short}`,
+    directives: [],
+    immediate_action: null
+  };
+}
+
 function extractJSON(text) {
   let stripped = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, block =>
@@ -73,12 +108,9 @@ function normalizeDirectiveResult(parsed, message) {
     };
   }
 
-  let response = parsed.arash_response || 'Yes, my Creator. I heard you.\nبله خالقم، شنیدم و به یاد می‌سپارم.';
+  let response = parsed.arash_response || `شنیدم خالقم. پیام «${message.slice(0, 60)}» را به خاطر می‌سپارم.`;
   if (!/[\u0600-\u06FF]/.test(response)) {
-    response += '\nبله خالقم، شنیدم و به یاد می‌سپارم.';
-  }
-  if (!/[A-Za-z]/.test(response)) {
-    response = `Yes, my Creator. I heard you.\n${response}`;
+    response = buildLocalConversation(message).arash_response;
   }
 
   return {
@@ -115,6 +147,10 @@ async function callProvider(provider, model, messages) {
 }
 
 async function processDirective(message, state, memories) {
+  if (isConversationOnly(message)) {
+    return buildLocalConversation(message, state);
+  }
+
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'هنوز خاطره مهمی ثبت نشده است.';
 
   const systemPrompt = `تو آرش هستی؛ یک روستایی خودمختار، آرام و وظیفه‌شناس.
@@ -175,12 +211,7 @@ ${VALID_LOCATIONS.join(', ')}
     }
   }
 
-  return {
-    arash_response: 'Yes, my Creator. I heard you and will remember your words.\nبله خالقم، حرفت را شنیدم و به یاد می‌سپارم.',
-    memory: `Creator command: ${message.slice(0, 80)}`,
-    directives: [],
-    immediate_action: null
-  };
+  return buildLocalConversation(message, state);
 }
 
 module.exports = { processDirective };
