@@ -329,9 +329,8 @@ function animate() {
     controls.maxDistance = 70;
   }
 
-  // World clock: The server advances 30 game minutes (0.5 hours) every 1 real minute (60 seconds).
-  // Therefore, 1 real second = 0.5 / 60 world hours.
-  worldHour += delta * (0.5 / 60);
+  // World clock mirrors the server: 30 game minutes every 5 real minutes.
+  worldHour += delta * (0.5 / (5 * 60));
   if (worldHour >= 24) worldHour = 0;
 
   // Smoothly update HUD time so user sees minutes passing
