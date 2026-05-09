@@ -22,7 +22,10 @@ export class CreatorPanel {
     this.$closeBtn = document.getElementById('creator-close');
 
     if (this.$send) {
-      this.$send.addEventListener('click', () => this._sendMessage());
+      this.$send.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this._sendMessage();
+      });
     }
     if (this.$input) {
       this.$input.addEventListener('keydown', (e) => {
