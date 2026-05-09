@@ -34,10 +34,7 @@ const LOCATIONS = {
 
 // These models are supported on this specific API key
 const MODELS = [
-  'gemini-2.0-flash',
-  'gemini-flash-latest',
-  'gemini-2.5-flash',
-  'gemini-3-flash-preview'
+  'gemini-flash-latest'
 ];
 
 // Global concurrency lock — prevents overlapping AI calls eating rate limit
