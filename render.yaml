@@ -18,8 +18,6 @@ services:
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
-      - key: CREATOR_TOKEN
-        sync: false
     disk:
       name: village-data
       mountPath: /data/village
