@@ -4,7 +4,9 @@ const {
   PRIMARY_MODEL,
   FALLBACK_MODEL,
   SAMBANOVA_PRIMARY_MODEL,
-  SAMBANOVA_FALLBACK_MODEL
+  SAMBANOVA_FALLBACK_MODEL,
+  GEMINI_API_KEY,
+  GEMINI_MODEL
 } = require('./config');
 
 const VALID_ACTIONS = [
@@ -34,6 +36,13 @@ const PROVIDERS = [
     key: SAMBANOVA_API_KEY,
     endpoint: 'https://api.sambanova.ai/v1/chat/completions',
     models: [SAMBANOVA_PRIMARY_MODEL, SAMBANOVA_FALLBACK_MODEL],
+    headers: {}
+  },
+  {
+    name: 'Gemini',
+    type: 'gemini',
+    key: GEMINI_API_KEY,
+    models: [GEMINI_MODEL],
     headers: {}
   }
 ].filter(p => p.key && p.key !== 'MISSING_KEY');
@@ -110,7 +119,33 @@ function normalizeDirectiveResult(parsed, message) {
   };
 }
 
+function messagesToText(messages) {
+  return messages.map(m => m.role.toUpperCase() + ':\n' + m.content).join('\n\n');
+}
+
 async function callProvider(provider, model, messages) {
+  if (provider.type === 'gemini') {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(provider.key), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: messagesToText(messages) }] }],
+        generationConfig: {
+          temperature: 0.65,
+          topP: 0.9,
+          maxOutputTokens: 800
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+  }
+
   const response = await fetch(provider.endpoint, {
     method: 'POST',
     headers: {
@@ -134,7 +169,6 @@ async function callProvider(provider, model, messages) {
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
 }
-
 function cleanConversationText(text) {
   return String(text || '')
     .replace(/<think>[\s\S]*?<\/think>/g, '')
