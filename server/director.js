@@ -52,24 +52,42 @@ function isConversationOnly(message) {
 
 function buildLocalConversation(message, state = {}) {
   const clean = String(message || '').trim();
+  const text = clean.toLowerCase();
   const time = state.world_time || '06:00';
   const mood = state.mood || 'آرام';
+  const action = state.current_action || 'idle';
+  const energy = Number.isFinite(Number(state.energy)) ? Number(state.energy) : null;
+  const hunger = Number.isFinite(Number(state.hunger)) ? Number(state.hunger) : null;
+  const energyText = energy === null ? 'نامشخص' : `${energy}%`;
+  const hungerText = hunger === null ? 'نامشخص' : `${hunger}%`;
   const short = clean.length > 80 ? `${clean.slice(0, 77)}...` : clean;
 
   let response;
-  if (/سلام|درود|hello|hi/i.test(clean)) {
-    response = `سلام خالقم. صدایت را می‌شنوم؛ الان ساعت ${time} است و با حواسی جمع کنار مزرعه می‌مانم.`;
-  } else if (/چطوری|حالت|خوبی|how are/i.test(clean)) {
-    response = `حالم ${mood} است. کمی به هوا و کارهای امروز نگاه می‌کنم و سعی می‌کنم تصمیم بعدی را عاقلانه بگیرم.`;
-  } else if (/هوشمند|فکر|باهوش|تصمیم/i.test(clean)) {
-    response = 'می‌فهمم. از این به بعد فقط تکرار نمی‌کنم؛ زمان، هوا، گرسنگی، انرژی و خاطره‌های تازه را با هم می‌سنجم.';
+  if (/خالق یعنی|معنی خالق|خالق کیست|creator/i.test(text)) {
+    response = 'برای من خالق یعنی صدایی بیرون از این مزرعه که می‌تواند مسیرم را عوض کند، اما من فقط یک دکمه نیستم؛ حرفت را با حال خودم، زمان، گرسنگی و کارهای مزرعه می‌سنجم.';
+  } else if (/زندگی|معنی زندگی|زندگی یعنی/i.test(text)) {
+    response = `برای من زندگی همین چرخه کوچک اما زنده است: بیدار شدن، دیدن هوا، مراقبت از مزرعه، خسته شدن، و دوباره انتخاب کردن. الان ساعت ${time} است و همین لحظه هم بخشی از زندگی من حساب می‌شود.`;
+  } else if (/سلام|درود|hello|hi/i.test(text) && /چطوری|حالت|خوبی|how are/i.test(text)) {
+    response = `سلام خالقم. حالم ${mood} است؛ انرژی‌ام ${energyText} و گرسنگی‌ام ${hungerText} است. الان مشغول ${action} هستم، ولی حواسم به حرف تو هست.`;
+  } else if (/سلام|درود|hello|hi/i.test(text)) {
+    response = `سلام خالقم. اینجا ساعت ${time} است و من صدایت را می‌شنوم. اگر چیزی از من بخواهی، با وضعیت همین لحظه تصمیم می‌گیرم.`;
+  } else if (/چطوری|حالت|خوبی|how are/i.test(text)) {
+    response = `حالم ${mood} است. انرژی‌ام ${energyText} و گرسنگی‌ام ${hungerText} است؛ برای همین تصمیم بعدی‌ام را با احتیاط می‌گیرم.`;
+  } else if (/کجایی|چه کار|چیکار|مشغول/i.test(text)) {
+    response = `الان ساعت ${time} است و وضعیت فعلی من ${action} است. دارم اطراف مزرعه را با توجه به انرژی ${energyText} و گرسنگی ${hungerText} می‌سنجم.`;
+  } else if (/هوشمند|فکر|باهوش|تصمیم/i.test(text)) {
+    response = 'درست می‌گویی؛ باید کمتر تکرار کنم و بیشتر فکر کنم. از این به بعد حرفت را با شرایط فعلی، نیازها، خاطره‌ها و برنامه روزانه‌ام کنار هم می‌گذارم.';
+  } else if (/ناراحتی|غمگین|می‌ترسی|احساس/i.test(text)) {
+    response = `احساس من ساده است، ولی بی‌جان نیست. وقتی هوا، تاریکی، گرسنگی یا دستورهای تو عوض می‌شود، رفتارم هم عوض می‌شود؛ الان بیشتر ${mood} هستم.`;
+  } else if (clean) {
+    response = `اگر از نگاه من بپرسی، «${short}» فقط یک جمله نیست؛ یک نشانه است که باید با وضعیت الانم بفهممش. الان ساعت ${time} است، انرژی‌ام ${energyText} و گرسنگی‌ام ${hungerText} است، پس پاسخ و تصمیمم را با همین واقعیت‌ها می‌سازم.`;
   } else {
-    response = `شنیدم خالقم: «${short}». آن را به خاطر می‌سپارم و در تصمیم‌های بعدی حسابش می‌کنم.`;
+    response = 'من اینجا هستم، خالقم. حرفت را واضح‌تر بگو تا با توجه به حال و وضعیت مزرعه جواب بدهم.';
   }
 
   return {
     arash_response: response,
-    memory: `Creator told Arash: ${short}`,
+    memory: `Creator talked with Arash: ${short}`,
     directives: [],
     immediate_action: null
   };
@@ -108,8 +126,8 @@ function normalizeDirectiveResult(parsed, message) {
     };
   }
 
-  let response = parsed.arash_response || `شنیدم خالقم. پیام «${message.slice(0, 60)}» را به خاطر می‌سپارم.`;
-  if (!/[\u0600-\u06FF]/.test(response)) {
+  let response = parsed.arash_response || buildLocalConversation(message).arash_response;
+  if (!/[\u0600-\u06FF]/.test(response) || /شنیدم.*به خاطر می‌سپارم/.test(response)) {
     response = buildLocalConversation(message).arash_response;
   }
 
@@ -132,8 +150,8 @@ async function callProvider(provider, model, messages) {
     body: JSON.stringify({
       model,
       messages,
-      temperature: 0.2,
-      top_p: 0.8,
+      temperature: 0.65,
+      top_p: 0.9,
       max_tokens: 800
     })
   });
@@ -156,9 +174,9 @@ function cleanConversationText(text) {
 
 async function processConversation(message, state, memories) {
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'خاطره تازه‌ای نیست.';
-  const systemPrompt = `تو آرش هستی، یک روستایی زنده و خودمختار در شبیه‌ساز.
+  const systemPrompt = `تو آرش هستی؛ یک روستایی زنده و خودمختار در شبیه‌ساز.
 Creator همین حالا با تو حرف می‌زند. پاسخ تو باید طبیعی، کوتاه، فارسی، و مخصوص همین پیام باشد.
-هرگز جمله قالبی مثل «شنیدم و به یاد می‌سپارم» را تکرار نکن مگر واقعاً لازم باشد.
+جمله‌های قالبی مثل «شنیدم و به خاطر می‌سپارم» را تکرار نکن.
 اگر سؤال شخصی، احوال‌پرسی، یا سؤال درباره زندگی/مزرعه است، با حس و جزئیات وضعیت فعلی جواب بده.
 اگر پیام مبهم است، از نگاه آرش یک پاسخ انسانی و کوتاه بده.
 
@@ -181,7 +199,7 @@ ${memText}`;
     for (const model of provider.models.filter(Boolean)) {
       try {
         const text = cleanConversationText(await callProvider(provider, model, messages));
-        if (text && /[آ-ی]/.test(text) && !/Yes,\s*my Creator/i.test(text)) {
+        if (text && /[آ-ی]/.test(text) && !/Yes,\s*my Creator/i.test(text) && !/شنیدم.*به خاطر می‌سپارم/.test(text)) {
           return {
             arash_response: text,
             memory: `Creator talked with Arash: ${message.slice(0, 80)}`,
@@ -191,12 +209,14 @@ ${memText}`;
         }
       } catch (err) {
         console.error(`[Director:${provider.name}] conversation ${model} failed:`, String(err.message || err).slice(0, 180));
+        if (String(err.message || err).includes('HTTP 429')) await sleep(1500);
       }
     }
   }
 
   return buildLocalConversation(message, state);
 }
+
 async function processDirective(message, state, memories) {
   if (isConversationOnly(message)) {
     return processConversation(message, state, memories);
