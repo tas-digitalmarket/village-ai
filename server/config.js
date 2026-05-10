@@ -24,8 +24,8 @@ module.exports = {
   GEMINI_API_KEY: rawGeminiKey || missing,
   CREATOR_TOKEN: process.env.CREATOR_TOKEN || '',
   DEBUG_ENABLED: process.env.DEBUG_ENABLED === 'true',
-  PRIMARY_MODEL: process.env.PRIMARY_MODEL || 'openai/gpt-oss-20b:free',
-  FALLBACK_MODEL: process.env.FALLBACK_MODEL || 'meta-llama/llama-3.2-3b-instruct:free',
+  PRIMARY_MODEL: process.env.PRIMARY_MODEL || 'openai/gpt-oss-120b:free',
+  FALLBACK_MODEL: process.env.FALLBACK_MODEL || 'openai/gpt-oss-20b:free',
   SAMBANOVA_PRIMARY_MODEL: process.env.SAMBANOVA_PRIMARY_MODEL || 'Meta-Llama-3.3-70B-Instruct',
   SAMBANOVA_FALLBACK_MODEL: process.env.SAMBANOVA_FALLBACK_MODEL || 'DeepSeek-V3.1',
   GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.0-flash'
