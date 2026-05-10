@@ -38,9 +38,9 @@ function paintClock() {
 function patchHudClock() {
   if (!window.hud || originalSetTime) return;
   originalSetTime = window.hud.setTime.bind(window.hud);
-  window.hud.setTime = () => {
+  window.hud.setTime = (...args) => {
     const clock = formatClock();
-    if (!clock) return originalSetTime(...arguments);
+    if (!clock) return originalSetTime(...args);
     originalSetTime(clock.time, clock.hour);
     paintClock();
   };
