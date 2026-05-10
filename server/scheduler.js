@@ -1,7 +1,7 @@
 // scheduler.js - Tick engine with Creator directive priority
 const {
   getState, saveState, getMemories, addMemory, logWeather,
-  findDirectiveForTime, removeDirective, getDirectives
+  findDirectiveForTime, removeDirective, getDirectives, WORLD_DAY_REAL_MINUTES
 } = require('./database');
 const { askGemini, LOCATIONS } = require('./gemini');
 const { generateWeather } = require('./weather');
@@ -9,18 +9,10 @@ const { readWorldState, updateWorldStateForTick } = require('./world-state');
 
 let tickCount = 0;
 const firedDirectives = new Set();
-const WORLD_MINUTES_PER_TICK = 30;
+const DECISION_TICK_REAL_MINUTES = Number(process.env.DECISION_TICK_REAL_MINUTES || 2);
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
-}
-
-function advanceWorldTime(currentTime, minutesToAdd = WORLD_MINUTES_PER_TICK) {
-  const [h, m] = String(currentTime || '06:00').split(':').map(Number);
-  const total = h * 60 + m + minutesToAdd;
-  const nh = Math.floor(total / 60) % 24;
-  const nm = total % 60;
-  return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
 }
 
 function getFallbackAction(h, weather, state, worldState = readWorldState()) {
@@ -74,16 +66,14 @@ function getFallbackAction(h, weather, state, worldState = readWorldState()) {
 function buildUpcomingSchedule(directives, worldTime) {
   const schedule = [];
   if (directives && directives.length > 0) {
-    directives.forEach(d => {
-      schedule.push({
-        id: d.id,
-        time: d.time,
-        label: d.label || d.action,
-        action: d.action,
-        recurring: d.recurring,
-        source: 'creator'
-      });
-    });
+    directives.forEach(d => schedule.push({
+      id: d.id,
+      time: d.time,
+      label: d.label || d.action,
+      action: d.action,
+      recurring: d.recurring,
+      source: 'creator'
+    }));
   }
 
   const routineMilestones = [
@@ -114,7 +104,7 @@ function buildUpcomingSchedule(directives, worldTime) {
   }).slice(0, 10);
 }
 
-function decisionFromDirective(directive, state, newWorldTime) {
+function decisionFromDirective(directive, state, worldTime) {
   const pos = LOCATIONS[directive.location] || { x: state.position_x || 0, z: state.position_z || 0 };
   return {
     action: directive.action,
@@ -124,7 +114,7 @@ function decisionFromDirective(directive, state, newWorldTime) {
     energy_delta: directive.action === 'sleeping' ? 10 : directive.action === 'eating' ? 5 : -3,
     hunger_delta: directive.action === 'eating' ? -15 : 2,
     new_mood: 'content',
-    memory: `Creator commanded: ${directive.label} at ${newWorldTime}`,
+    memory: `Creator commanded: ${directive.label} at ${worldTime}`,
     thought: 'خالق از من خواسته و انجامش می‌دهم.'
   };
 }
@@ -147,41 +137,34 @@ function buildFallbackDecision(state, weather, timeStr, worldState) {
 
 async function runTick(broadcast) {
   tickCount++;
-  console.log(`\n[Scheduler] Tick #${tickCount} - ${new Date().toLocaleTimeString()}`);
+  console.log(`\n[Scheduler] Decision tick #${tickCount} - ${new Date().toLocaleTimeString()}`);
 
   try {
     const state = getState();
     const memories = getMemories(10);
     const directives = getDirectives();
     const worldState = readWorldState();
-    const newWorldTime = advanceWorldTime(state.world_time);
+    const worldTime = state.world_time || '06:00';
     const weather = generateWeather(tickCount);
 
-    logWeather(weather, newWorldTime);
-    const upcomingSchedule = buildUpcomingSchedule(directives, newWorldTime, weather);
+    logWeather(weather, worldTime);
+    const upcomingSchedule = buildUpcomingSchedule(directives, worldTime, weather);
 
     let decision = null;
-    const directive = findDirectiveForTime(newWorldTime);
+    const directive = findDirectiveForTime(worldTime);
     if (directive && !firedDirectives.has(directive.id)) {
       firedDirectives.add(directive.id);
-      console.log(`[Scheduler] Creator directive matched: ${directive.label} @ ${newWorldTime}`);
-      decision = decisionFromDirective(directive, state, newWorldTime);
+      decision = decisionFromDirective(directive, state, worldTime);
       if (!directive.recurring) removeDirective(directive.id);
     } else {
-      if (newWorldTime === '00:00' || newWorldTime === '00:30') firedDirectives.clear();
+      if (worldTime === '00:00' || worldTime === '00:01') firedDirectives.clear();
       try {
-        decision = await askGemini(state, memories, weather, newWorldTime, upcomingSchedule, worldState);
+        decision = await askGemini(state, memories, weather, worldTime, upcomingSchedule, worldState);
       } catch (err) {
         console.warn('[Scheduler] AI decision failed, using world-aware fallback:', err.message);
-        decision = buildFallbackDecision(state, weather, newWorldTime, worldState);
+        decision = buildFallbackDecision(state, weather, worldTime, worldState);
       }
     }
-
-    const prevTime = state.world_time || '06:00';
-    const [prevH] = prevTime.split(':').map(Number);
-    const [newH] = newWorldTime.split(':').map(Number);
-    const crossedMidnight = prevH >= 22 && newH <= 1;
-    const newDay = crossedMidnight ? (state.day || 1) + 1 : (state.day || 1);
 
     const newState = {
       position_x: decision.target_position?.x ?? state.position_x ?? 0,
@@ -191,8 +174,8 @@ async function runTick(broadcast) {
       hunger: clamp((state.hunger || 20) + (decision.hunger_delta || 0), 0, 100),
       current_action: decision.action || 'idle',
       weather,
-      world_time: newWorldTime,
-      day: newDay,
+      world_time: worldTime,
+      day: state.day || 1,
       mood: decision.new_mood || state.mood || 'content'
     };
 
@@ -217,71 +200,23 @@ async function runTick(broadcast) {
       }
     });
 
-    console.log(`[Scheduler] ${newState.current_action} | Time: ${newWorldTime} | East ${newWorldState.fields.east.growth}% West ${newWorldState.fields.west.growth}%`);
+    console.log(`[Scheduler] ${newState.current_action} | Day ${newState.day} ${worldTime} | World day = ${WORLD_DAY_REAL_MINUTES} real minutes`);
   } catch (err) {
     console.error('[Scheduler] Error:', err.message);
   }
 }
 
 function startScheduler(broadcast) {
-  const tickMinutes = parseInt(process.env.TICK_INTERVAL) || 5;
-  const intervalMs = tickMinutes * 60 * 1000;
-  console.log(`[Scheduler] Intelligence: Every ${tickMinutes}m - World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
+  const intervalMs = DECISION_TICK_REAL_MINUTES * 60 * 1000;
+  console.log(`[Scheduler] World clock: 1 world day = ${WORLD_DAY_REAL_MINUTES} real minutes`);
+  console.log(`[Scheduler] Decisions: every ${DECISION_TICK_REAL_MINUTES} real minutes`);
 
-  catchUpSimulation(broadcast).catch(err => {
-    console.error('[Scheduler] Catch-up failed:', err.message);
-  });
-
-  setTimeout(() => runTick(broadcast), 5000);
+  setTimeout(() => runTick(broadcast), intervalMs);
   setInterval(() => runTick(broadcast), intervalMs);
 }
 
 async function catchUpSimulation() {
-  console.log('[Scheduler] Checking for time gaps to catch up...');
-  const state = getState();
-  const lastTime = state.timestamp ? new Date(state.timestamp).getTime() : Date.now();
-  const elapsedMin = Math.floor((Date.now() - lastTime) / 1000 / 60);
-  const tickMinutes = parseInt(process.env.TICK_INTERVAL) || 5;
-  let ticksToCatchUp = Math.floor(elapsedMin / tickMinutes);
-  if (ticksToCatchUp <= 0) return;
-  ticksToCatchUp = Math.min(ticksToCatchUp, 48);
-
-  let currentState = state;
-  let worldState = readWorldState();
-  for (let i = 0; i < ticksToCatchUp; i++) {
-    const nextTime = advanceWorldTime(currentState.world_time);
-    const [hStr, mStr] = nextTime.split(':');
-    const hNum = parseInt(hStr) + (parseInt(mStr) / 60);
-    const weather = generateWeather(tickCount + i + 1);
-    const fb = getFallbackAction(hNum, weather, currentState, worldState);
-    const decision = {
-      action: fb.action,
-      target_location: fb.loc,
-      target_position: fb.pos,
-      energy_delta: fb.action === 'sleeping' ? 10 : -3,
-      hunger_delta: fb.action === 'eating' ? -15 : 2
-    };
-
-    const [prevH] = currentState.world_time.split(':').map(Number);
-    const [newH] = nextTime.split(':').map(Number);
-    const crossedMidnight = prevH >= 22 && newH <= 1;
-    currentState = {
-      ...currentState,
-      world_time: nextTime,
-      day: crossedMidnight ? (currentState.day || 1) + 1 : (currentState.day || 1),
-      energy: clamp((currentState.energy || 80) + decision.energy_delta, 0, 100),
-      hunger: clamp((currentState.hunger || 20) + decision.hunger_delta, 0, 100),
-      current_action: decision.action,
-      weather,
-      position_x: fb.pos.x,
-      position_z: fb.pos.z,
-      timestamp: new Date(lastTime + (i + 1) * tickMinutes * 60 * 1000).toISOString()
-    };
-    worldState = updateWorldStateForTick(worldState, decision, weather);
-  }
-
-  saveState(currentState);
-  console.log(`[Scheduler] Catch-up complete. New Time: Day ${currentState.day}, ${currentState.world_time}`);
+  return getState();
 }
 
 module.exports = { startScheduler, buildUpcomingSchedule, catchUpSimulation };
