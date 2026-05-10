@@ -1,4 +1,4 @@
-// hud.js — Redesigned HUD matching the AI Villager sample design
+// hud.js - Redesigned HUD matching the AI Villager sample design
 const ACTION_ICONS = {
   idle: '💤', walking: '🚶', chopping_wood: '🪓',
   watering_crops: '💧', harvesting: '🌾', eating: '🍞',
@@ -36,49 +36,63 @@ const MOOD_ICONS = {
   focused: '🧐', proud: '😎', curious: '🤔'
 };
 
+function pct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function createMeter(label, value, tone = 'primary') {
+  const safe = pct(value);
+  return `
+    <div class="world-meter world-meter--${tone}">
+      <div class="world-meter-head"><span>${label}</span><strong>${safe}%</strong></div>
+      <div class="world-meter-track"><div class="world-meter-fill" style="width:${safe}%"></div></div>
+    </div>
+  `;
+}
+
+function createStat(label, value) {
+  return `<div class="world-stat"><span>${label}</span><strong>${value}</strong></div>`;
+}
+
 export class HUD {
   constructor() {
-    this.$title      = document.getElementById('hud-title');
-    this.$day        = document.getElementById('stat-day');
-    this.$time       = document.getElementById('stat-time');
-    this.$weather    = document.getElementById('stat-weather');
-    this.$mood       = document.getElementById('stat-mood');
-    this.$energyBar  = document.getElementById('energy-bar');
-    this.$energyVal  = document.getElementById('energy-val');
-    this.$hungerBar  = document.getElementById('hunger-bar');
-    this.$hungerVal  = document.getElementById('hunger-val');
-    this.$taskIcon   = document.getElementById('task-icon');
-    this.$taskLabel  = document.getElementById('task-label');
-    this.$thought    = document.getElementById('thought-bubble');
-    this.$thoughtTx  = document.getElementById('thought-text');
-    this.$schedList  = document.getElementById('schedule-list');
-    this.$conn       = document.getElementById('conn-status');
-    this.$memList    = document.getElementById('memory-list');
+    this.$title = document.getElementById('hud-title');
+    this.$day = document.getElementById('stat-day');
+    this.$time = document.getElementById('stat-time');
+    this.$weather = document.getElementById('stat-weather');
+    this.$mood = document.getElementById('stat-mood');
+    this.$energyBar = document.getElementById('energy-bar');
+    this.$energyVal = document.getElementById('energy-val');
+    this.$hungerBar = document.getElementById('hunger-bar');
+    this.$hungerVal = document.getElementById('hunger-val');
+    this.$taskIcon = document.getElementById('task-icon');
+    this.$taskLabel = document.getElementById('task-label');
+    this.$thought = document.getElementById('thought-bubble');
+    this.$thoughtTx = document.getElementById('thought-text');
+    this.$schedList = document.getElementById('schedule-list');
+    this.$conn = document.getElementById('conn-status');
+    this.$memList = document.getElementById('memory-list');
+    this.$worldList = document.getElementById('world-state-list');
 
-    this._dayCount   = 1;
-    this._startHour  = 6;
-    this._lastHour   = -1;
+    this._dayCount = 1;
+    this._lastHour = -1;
   }
 
   setTime(timeStr, hour) {
     if (this.$time) this.$time.textContent = timeStr;
-    // Fallback day counter: only increment once per midnight crossing
-    if (this._lastHour !== -1 && this._lastHour > 20 && hour === 0) {
-      this._dayCount++;
-    }
+    if (this._lastHour !== -1 && this._lastHour > 20 && hour === 0) this._dayCount++;
     this._lastHour = hour;
     if (this.$day) this.$day.textContent = `Day ${this._dayCount}`;
   }
 
   update(data) {
-    const { energy, hunger, current_action, weather, mood, thought, memories, day } = data;
+    const { energy, hunger, current_action, weather, mood, thought, memories, day, world_state } = data;
 
-    // Use server-provided day count if available
-    if (day !== undefined && day !== null && day > 0) {
-      this._dayCount = day;
-    }
+    if (day !== undefined && day !== null && day > 0) this._dayCount = day;
     if (this.$day) this.$day.textContent = `Day ${this._dayCount}`;
-    // Energy bar
+
     const energyPct = energy ?? 0;
     if (this.$energyBar) {
       this.$energyBar.style.width = `${energyPct}%`;
@@ -90,7 +104,6 @@ export class HUD {
     }
     if (this.$energyVal) this.$energyVal.textContent = `${energyPct}%`;
 
-    // Hunger bar (high hunger = bad)
     const hungerPct = hunger ?? 0;
     if (this.$hungerBar) {
       this.$hungerBar.style.width = `${hungerPct}%`;
@@ -102,33 +115,21 @@ export class HUD {
     }
     if (this.$hungerVal) this.$hungerVal.textContent = `${hungerPct}%`;
 
-    // Weather
-    if (this.$weather && weather) {
-      this.$weather.textContent = `${WEATHER_ICONS[weather] || '🌤️'} ${weather}`;
-    }
+    if (this.$weather && weather) this.$weather.textContent = `${WEATHER_ICONS[weather] || '🌤️'} ${weather}`;
+    if (this.$mood && mood) this.$mood.textContent = `${MOOD_ICONS[mood] || '😊'} ${mood}`;
 
-    // Mood
-    if (this.$mood && mood) {
-      this.$mood.textContent = `${MOOD_ICONS[mood] || '😊'} ${mood}`;
-    }
-
-    // Current task
-    const icon  = ACTION_ICONS[current_action]  || '❓';
+    const icon = ACTION_ICONS[current_action] || '❓';
     const label = ACTION_LABELS[current_action] || current_action || 'idle';
-    if (this.$taskIcon)  this.$taskIcon.textContent  = icon;
+    if (this.$taskIcon) this.$taskIcon.textContent = icon;
     if (this.$taskLabel) this.$taskLabel.textContent = label;
 
-    // Thought bubble
     if (thought && this.$thought && this.$thoughtTx) {
       this.$thoughtTx.textContent = thought;
       this.$thought.classList.remove('hidden');
       clearTimeout(this._thoughtTimer);
-      this._thoughtTimer = setTimeout(() => {
-        this.$thought.classList.add('hidden');
-      }, 14000);
+      this._thoughtTimer = setTimeout(() => this.$thought.classList.add('hidden'), 14000);
     }
 
-    // Memories
     if (memories && this.$memList) {
       this.$memList.innerHTML = '';
       memories.slice(0, 6).forEach(m => {
@@ -137,9 +138,44 @@ export class HUD {
         this.$memList.appendChild(li);
       });
     }
+
+    if (world_state) this.updateWorldState(world_state);
   }
 
-  // Update the upcoming schedule panel
+  updateWorldState(world) {
+    if (!this.$worldList || !world) return;
+    const east = world.fields?.east || {};
+    const west = world.fields?.west || {};
+    const storage = world.storage || {};
+    const well = world.well || {};
+    const house = world.house || {};
+    const motorcycle = world.motorcycle || {};
+    const animals = world.animals || {};
+
+    this.$worldList.innerHTML = `
+      <div class="world-block">
+        <div class="world-block-title">East Field</div>
+        ${createMeter('Moisture', east.moisture, east.moisture < 30 ? 'warn' : 'primary')}
+        ${createMeter('Growth', east.growth, east.growth > 75 ? 'ready' : 'primary')}
+      </div>
+      <div class="world-block">
+        <div class="world-block-title">West Field</div>
+        ${createMeter('Moisture', west.moisture, west.moisture < 30 ? 'warn' : 'primary')}
+        ${createMeter('Growth', west.growth, west.growth > 75 ? 'ready' : 'primary')}
+      </div>
+      <div class="world-grid">
+        ${createStat('Food', storage.food ?? 0)}
+        ${createStat('Wood', storage.wood ?? 0)}
+        ${createStat('Seeds', storage.seeds ?? 0)}
+        ${createStat('Well', `${pct(well.water_level)}%`)}
+        ${createStat('House', `${pct(house.condition)}%`)}
+        ${createStat('Motor', `${pct(motorcycle.condition)}%`)}
+        ${createStat('Fuel', `${pct(motorcycle.fuel)}%`)}
+        ${createStat('Animals', `${pct(animals.health)}%`)}
+      </div>
+    `;
+  }
+
   updateSchedule(directives) {
     if (!this.$schedList) return;
     this.$schedList.innerHTML = '';
@@ -152,18 +188,15 @@ export class HUD {
       return;
     }
 
-    // Sort by time
     const sorted = [...directives].sort((a, b) => a.time.localeCompare(b.time));
     sorted.forEach(d => {
       const isCreator = d.source === 'creator';
       const li = document.createElement('li');
       li.className = `schedule-item ${isCreator ? 'schedule-item--creator' : 'schedule-item--routine'}`;
-
       const sourceIcon = isCreator ? '👑' : '🤖';
       const badge = isCreator
         ? `${d.recurring ? '<span class="sched-badge">daily</span>' : '<span class="sched-badge sched-badge--once">once</span>'}`
-        : `<span class="sched-source-icon">routine</span>`;
-
+        : '<span class="sched-source-icon">routine</span>';
       li.innerHTML = `
         <span class="sched-source-icon">${sourceIcon}</span>
         <span class="sched-time">${d.time}</span>
@@ -172,21 +205,13 @@ export class HUD {
         ${isCreator ? `<button class="sched-del" data-id="${d.id}" title="Remove">✕</button>` : ''}
       `;
 
-      // Delete button only for Creator directives
       if (isCreator) {
-        li.querySelector('.sched-del').addEventListener('click', async (e) => {
+        li.querySelector('.sched-del').addEventListener('click', async e => {
           const id = e.target.dataset.id;
           const res = await fetch(`/api/directive/${id}`, { method: 'DELETE' });
-          if (!res.ok) {
-            return;
-          }
-          li.remove();
-          if (this.$schedList.querySelectorAll('.schedule-item--creator').length === 0) {
-            // Routine items remain, no need to show empty state
-          }
+          if (res.ok) li.remove();
         });
       }
-
       this.$schedList.appendChild(li);
     });
   }
