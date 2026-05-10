@@ -3,16 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Villager — Autonomous Simulation</title>
-  <meta name="description" content="A 3D autonomous AI villager simulation powered by Gemini AI." />
-  
+  <title>AI Villager - Autonomous Simulation</title>
+  <meta name="description" content="A 3D autonomous AI villager simulation." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  
-  <link rel="stylesheet" href="style.css" />
-
-  <!-- Three.js Import Map -->
+  <link rel="stylesheet" href="style.css?v=8" />
   <script type="importmap">
   {
     "imports": {
@@ -23,22 +19,16 @@
   </script>
 </head>
 <body>
-  <!-- Loading Screen -->
   <div id="loading-screen">
     <div class="loader-spinner"></div>
     <h2>Generating World...</h2>
     <p id="loading-msg">Connecting to AI Neural Link...</p>
   </div>
 
-  <!-- Three.js Canvas -->
   <canvas id="world-canvas"></canvas>
 
-  <!-- HUD Overlay -->
   <div id="hud">
-    <!-- Left Column: Status & Schedule -->
     <div id="hud-left">
-
-      <!-- Status Panel -->
       <div class="hud-card glass-panel" id="panel-status">
         <div class="panel-header">
           <h1 class="hud-title">AI Villager</h1>
@@ -46,18 +36,9 @@
         </div>
         <div class="panel-body">
           <div class="stat-group">
-            <div class="stat-item">
-              <span class="stat-label">Day:</span>
-              <span class="stat-value" id="stat-day">1</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Time:</span>
-              <span class="stat-value" id="stat-time">06:00</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Weather:</span>
-              <span class="stat-value" id="stat-weather">sunny</span>
-            </div>
+            <div class="stat-item"><span class="stat-label">Day:</span><span class="stat-value" id="stat-day">1</span></div>
+            <div class="stat-item"><span class="stat-label">Time:</span><span class="stat-value" id="stat-time">06:00</span></div>
+            <div class="stat-item"><span class="stat-label">Weather:</span><span class="stat-value" id="stat-weather">sunny</span></div>
           </div>
           <div class="stat-group">
             <div class="bar-row">
@@ -71,15 +52,11 @@
           </div>
           <div class="task-section">
             <div class="section-label">Current Task</div>
-            <div class="task-display">
-              <span id="task-icon">💤</span>
-              <span id="task-label">Resting</span>
-            </div>
+            <div class="task-display"><span id="task-icon">💤</span><span id="task-label">Resting</span></div>
           </div>
         </div>
       </div>
 
-      <!-- Schedule Panel -->
       <div class="hud-card glass-panel" id="panel-schedule">
         <div class="panel-header">
           <span class="section-label" style="margin-bottom:0">📅 Upcoming Schedule</span>
@@ -87,42 +64,42 @@
         </div>
         <div class="panel-body schedule-body">
           <div class="schedule-container">
-            <ul id="schedule-list" class="schedule-list">
-              <li class="schedule-empty">No directives set</li>
-            </ul>
+            <ul id="schedule-list" class="schedule-list"><li class="schedule-empty">No directives set</li></ul>
           </div>
         </div>
       </div>
 
+      <div class="hud-card glass-panel" id="panel-world">
+        <div class="panel-header">
+          <span class="section-label" style="margin-bottom:0">🌾 World State</span>
+          <button class="panel-min-btn" data-panel="panel-world" title="Minimize">⊟</button>
+        </div>
+        <div class="panel-body">
+          <div id="world-state-list" class="world-state-list">
+            <div class="world-empty">Loading world...</div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Center Top: Navigation -->
     <div id="hud-center">
-      <button id="view-toggle" class="view-inside-btn">
-        <span>🏠</span> View Inside
-      </button>
+      <button id="view-toggle" class="view-inside-btn"><span>🏠</span> View Inside</button>
     </div>
 
-    <!-- Right Panel: Memories -->
     <div id="hud-right">
       <div class="hud-card glass-panel" id="panel-memories">
         <div class="panel-header">
           <span class="section-label" style="margin-bottom:0">🧠 Recent Memories</span>
           <button class="panel-min-btn" data-panel="panel-memories" title="Minimize">⊟</button>
         </div>
-        <div class="panel-body">
-          <ul id="memory-list" class="schedule-list"></ul>
-        </div>
+        <div class="panel-body"><ul id="memory-list" class="schedule-list"></ul></div>
       </div>
     </div>
 
-    <!-- Connection Indicator -->
     <div id="conn-status" class="conn-dot offline">● Reconnecting...</div>
   </div>
 
-  <!-- Creator Chat Panel -->
   <div id="creator-toggle" class="glass-panel">💬</div>
-  
   <div id="creator-panel" class="glass-panel">
     <div class="creator-header">
       <h3>Creator Directives</h3>
@@ -140,19 +117,14 @@
     </div>
   </div>
 
-  <!-- Thought Bubble (Appears in 3D Space) -->
-  <div id="thought-bubble" class="hidden">
-    <span id="thought-text"></span>
-  </div>
+  <div id="thought-bubble" class="hidden"><span id="thought-text"></span></div>
 
-  <!-- Main App -->
-  <script type="module" src="main.js?v=7"></script>
-
-  <!-- Panel Minimize / Restore Logic -->
+  <script type="module" src="main.js?v=8"></script>
   <script>
     const PANEL_ICONS = {
-      'panel-status':   '📊',
+      'panel-status': '📊',
       'panel-schedule': '📅',
+      'panel-world': '🌾',
       'panel-memories': '🧠'
     };
     function initPanelToggles() {
