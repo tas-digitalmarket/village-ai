@@ -59,11 +59,12 @@ async function syncFromServer() {
   paintClock();
 }
 
-const boot = setInterval(() => {
+function paintLoop() {
   patchHudClock();
-  if (originalSetTime) clearInterval(boot);
-}, 100);
+  paintClock();
+  requestAnimationFrame(paintLoop);
+}
 
 syncFromServer().catch(() => {});
 setInterval(() => syncFromServer().catch(() => {}), 5000);
-setInterval(paintClock, 500);
+requestAnimationFrame(paintLoop);
