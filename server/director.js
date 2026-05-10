@@ -146,9 +146,60 @@ async function callProvider(provider, model, messages) {
   return data.choices?.[0]?.message?.content || '';
 }
 
+function cleanConversationText(text) {
+  return String(text || '')
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .trim()
+    .slice(0, 700);
+}
+
+async function processConversation(message, state, memories) {
+  const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'خاطره تازه‌ای نیست.';
+  const systemPrompt = `تو آرش هستی، یک روستایی زنده و خودمختار در شبیه‌ساز.
+Creator همین حالا با تو حرف می‌زند. پاسخ تو باید طبیعی، کوتاه، فارسی، و مخصوص همین پیام باشد.
+هرگز جمله قالبی مثل «شنیدم و به یاد می‌سپارم» را تکرار نکن مگر واقعاً لازم باشد.
+اگر سؤال شخصی، احوال‌پرسی، یا سؤال درباره زندگی/مزرعه است، با حس و جزئیات وضعیت فعلی جواب بده.
+اگر پیام مبهم است، از نگاه آرش یک پاسخ انسانی و کوتاه بده.
+
+وضعیت فعلی:
+- زمان: ${state.world_time || '06:00'}
+- حال‌وهوا: ${state.mood || 'content'}
+- کار فعلی: ${state.current_action || 'idle'}
+- انرژی: ${state.energy ?? 'نامشخص'}
+- گرسنگی: ${state.hunger ?? 'نامشخص'}
+
+خاطرات اخیر:
+${memText}`;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: message }
+  ];
+
+  for (const provider of PROVIDERS) {
+    for (const model of provider.models.filter(Boolean)) {
+      try {
+        const text = cleanConversationText(await callProvider(provider, model, messages));
+        if (text && /[آ-ی]/.test(text) && !/Yes,\s*my Creator/i.test(text)) {
+          return {
+            arash_response: text,
+            memory: `Creator talked with Arash: ${message.slice(0, 80)}`,
+            directives: [],
+            immediate_action: null
+          };
+        }
+      } catch (err) {
+        console.error(`[Director:${provider.name}] conversation ${model} failed:`, String(err.message || err).slice(0, 180));
+      }
+    }
+  }
+
+  return buildLocalConversation(message, state);
+}
 async function processDirective(message, state, memories) {
   if (isConversationOnly(message)) {
-    return buildLocalConversation(message, state);
+    return processConversation(message, state, memories);
   }
 
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'هنوز خاطره مهمی ثبت نشده است.';
