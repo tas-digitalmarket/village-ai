@@ -1,9 +1,14 @@
 // config.js - Global configuration
 const missing = 'MISSING_KEY';
 
+const rawOpenRouterKey = process.env.OPENROUTER_API_KEY || '';
+const rawSambaNovaKey = process.env.SAMBANOVA_API_KEY || '';
+const openRouterKeyFromAlias = rawSambaNovaKey.startsWith('sk-or-') ? rawSambaNovaKey : '';
+const sambaNovaKey = rawSambaNovaKey && !rawSambaNovaKey.startsWith('sk-or-') ? rawSambaNovaKey : '';
+
 module.exports = {
-  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || missing,
-  SAMBANOVA_API_KEY: process.env.SAMBANOVA_API_KEY || missing,
+  OPENROUTER_API_KEY: rawOpenRouterKey || openRouterKeyFromAlias || missing,
+  SAMBANOVA_API_KEY: sambaNovaKey || missing,
   CREATOR_TOKEN: process.env.CREATOR_TOKEN || '',
   DEBUG_ENABLED: process.env.DEBUG_ENABLED === 'true',
   PRIMARY_MODEL: process.env.PRIMARY_MODEL || 'openai/gpt-oss-20b:free',
