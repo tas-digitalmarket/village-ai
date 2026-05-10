@@ -52,38 +52,10 @@ function isConversationOnly(message) {
 
 function buildLocalConversation(message, state = {}) {
   const clean = String(message || '').trim();
-  const text = clean.toLowerCase();
-  const time = state.world_time || '06:00';
-  const mood = state.mood || 'آرام';
-  const action = state.current_action || 'idle';
-  const energy = Number.isFinite(Number(state.energy)) ? Number(state.energy) : null;
-  const hunger = Number.isFinite(Number(state.hunger)) ? Number(state.hunger) : null;
-  const energyText = energy === null ? 'نامشخص' : `${energy}%`;
-  const hungerText = hunger === null ? 'نامشخص' : `${hunger}%`;
   const short = clean.length > 80 ? `${clean.slice(0, 77)}...` : clean;
-
-  let response;
-  if (/خالق یعنی|معنی خالق|خالق کیست|creator/i.test(text)) {
-    response = 'برای من خالق یعنی صدایی بیرون از این مزرعه که می‌تواند مسیرم را عوض کند، اما من فقط یک دکمه نیستم؛ حرفت را با حال خودم، زمان، گرسنگی و کارهای مزرعه می‌سنجم.';
-  } else if (/زندگی|معنی زندگی|زندگی یعنی/i.test(text)) {
-    response = `برای من زندگی همین چرخه کوچک اما زنده است: بیدار شدن، دیدن هوا، مراقبت از مزرعه، خسته شدن، و دوباره انتخاب کردن. الان ساعت ${time} است و همین لحظه هم بخشی از زندگی من حساب می‌شود.`;
-  } else if (/سلام|درود|hello|hi/i.test(text) && /چطوری|حالت|خوبی|how are/i.test(text)) {
-    response = `سلام خالقم. حالم ${mood} است؛ انرژی‌ام ${energyText} و گرسنگی‌ام ${hungerText} است. الان مشغول ${action} هستم، ولی حواسم به حرف تو هست.`;
-  } else if (/سلام|درود|hello|hi/i.test(text)) {
-    response = `سلام خالقم. اینجا ساعت ${time} است و من صدایت را می‌شنوم. اگر چیزی از من بخواهی، با وضعیت همین لحظه تصمیم می‌گیرم.`;
-  } else if (/چطوری|حالت|خوبی|how are/i.test(text)) {
-    response = `حالم ${mood} است. انرژی‌ام ${energyText} و گرسنگی‌ام ${hungerText} است؛ برای همین تصمیم بعدی‌ام را با احتیاط می‌گیرم.`;
-  } else if (/کجایی|چه کار|چیکار|مشغول/i.test(text)) {
-    response = `الان ساعت ${time} است و وضعیت فعلی من ${action} است. دارم اطراف مزرعه را با توجه به انرژی ${energyText} و گرسنگی ${hungerText} می‌سنجم.`;
-  } else if (/هوشمند|فکر|باهوش|تصمیم/i.test(text)) {
-    response = 'درست می‌گویی؛ باید کمتر تکرار کنم و بیشتر فکر کنم. از این به بعد حرفت را با شرایط فعلی، نیازها، خاطره‌ها و برنامه روزانه‌ام کنار هم می‌گذارم.';
-  } else if (/ناراحتی|غمگین|می‌ترسی|احساس/i.test(text)) {
-    response = `احساس من ساده است، ولی بی‌جان نیست. وقتی هوا، تاریکی، گرسنگی یا دستورهای تو عوض می‌شود، رفتارم هم عوض می‌شود؛ الان بیشتر ${mood} هستم.`;
-  } else if (clean) {
-    response = `اگر از نگاه من بپرسی، «${short}» فقط یک جمله نیست؛ یک نشانه است که باید با وضعیت الانم بفهممش. الان ساعت ${time} است، انرژی‌ام ${energyText} و گرسنگی‌ام ${hungerText} است، پس پاسخ و تصمیمم را با همین واقعیت‌ها می‌سازم.`;
-  } else {
-    response = 'من اینجا هستم، خالقم. حرفت را واضح‌تر بگو تا با توجه به حال و وضعیت مزرعه جواب بدهم.';
-  }
+  const response = clean
+    ? 'من آرشم؛ کشاورز همین مزرعه. حرفت را می‌شنوم و سعی می‌کنم از جای خودم، ساده و طبیعی جواب بدهم.'
+    : 'من اینجا هستم، خالقم. حرفت را بگو تا از نگاه خودم جواب بدهم.';
 
   return {
     arash_response: response,
@@ -92,7 +64,6 @@ function buildLocalConversation(message, state = {}) {
     immediate_action: null
   };
 }
-
 function extractJSON(text) {
   let stripped = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, block =>
@@ -174,10 +145,12 @@ function cleanConversationText(text) {
 
 async function processConversation(message, state, memories) {
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'خاطره تازه‌ای نیست.';
-  const systemPrompt = `تو آرش هستی؛ یک روستایی زنده و خودمختار در شبیه‌ساز.
-Creator همین حالا با تو حرف می‌زند. پاسخ تو باید طبیعی، کوتاه، فارسی، و مخصوص همین پیام باشد.
+  const systemPrompt = `تو آرش هستی؛ از نگاه خودت یک انسان عادی، یک کشاورز روستایی که در همین مزرعه زندگی می‌کند.
+Creator همان کسی است که با تو حرف می‌زند و می‌تواند مسیر زندگی و کارهایت را جهت بدهد.
+پاسخ تو باید طبیعی، کوتاه، فارسی، اول‌شخص، و مخصوص همین پیام باشد؛ مثل یک آدم معمولی جواب بده، نه مثل گزارش سیستم.
 جمله‌های قالبی مثل «شنیدم و به خاطر می‌سپارم» را تکرار نکن.
-اگر سؤال شخصی، احوال‌پرسی، یا سؤال درباره زندگی/مزرعه است، با حس و جزئیات وضعیت فعلی جواب بده.
+درصد انرژی، گرسنگی، زمان، mood یا نام action را در جواب نیاور مگر خود Creator دقیقاً درباره وضعیت، انرژی، گرسنگی، زمان یا کارت پرسیده باشد.
+اگر سؤال شخصی، احوال‌پرسی، هویتی، یا سؤال درباره زندگی/مزرعه است، از هویت و تجربه خودت به عنوان آرشِ کشاورز جواب بده.
 اگر پیام مبهم است، از نگاه آرش یک پاسخ انسانی و کوتاه بده.
 
 وضعیت فعلی:
