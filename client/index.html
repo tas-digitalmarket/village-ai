@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
   <link rel="stylesheet" href="world-state.css?v=3" />
   <script type="importmap">
   {
@@ -79,9 +79,22 @@
   </div>
 
   <div id="creator-toggle" class="glass-panel">💬</div>
-  <div id="creator-panel" class="glass-panel"><div class="creator-header"><h3>Creator Directives</h3><button id="creator-close">✕</button></div><div id="creator-messages"><div class="creator-msg creator-msg--system"><span class="msg-label">Connection Established</span><p class="msg-text">Greetings Creator. I am listening to your permanent instructions.</p></div></div><div class="creator-input-area"><textarea id="creator-input" placeholder="Give Arash a command..."></textarea><button id="creator-send">Send</button></div></div>
+  <div id="creator-panel" class="glass-panel">
+    <div class="creator-header">
+      <div class="creator-heading-wrap">
+        <h3 id="creator-title">Creator Directives</h3>
+        <div class="creator-targets" role="tablist" aria-label="Creator target">
+          <button id="creator-target-arash" class="creator-target active" type="button">Arash</button>
+          <button id="creator-target-aida" class="creator-target" type="button">Aida</button>
+        </div>
+      </div>
+      <button id="creator-close">✕</button>
+    </div>
+    <div id="creator-messages"></div>
+    <div class="creator-input-area"><textarea id="creator-input" placeholder="Give Arash a command..."></textarea><button id="creator-send">Send</button></div>
+  </div>
 
-  <script type="module" src="main.js?v=14"></script>
+  <script type="module" src="main.js?v=15"></script>
   <script type="module" src="clock-smooth.js?v=2"></script>
 </body>
 </html>
