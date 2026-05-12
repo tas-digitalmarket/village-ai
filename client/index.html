@@ -8,18 +8,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=14" />
+  <link rel="stylesheet" href="style.css?v=15" />
   <link rel="stylesheet" href="world-state.css?v=3" />
   <script type="importmap">
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "./hud.js?v=7": "./hud.js?v=12",
-      "./hud.js?v=8": "./hud.js?v=12",
-      "./hud.js?v=9": "./hud.js?v=12",
-      "./hud.js?v=10": "./hud.js?v=12",
-      "./hud.js?v=11": "./hud.js?v=12"
+      "./hud.js?v=7": "./hud.js?v=13",
+      "./hud.js?v=8": "./hud.js?v=13",
+      "./hud.js?v=9": "./hud.js?v=13",
+      "./hud.js?v=10": "./hud.js?v=13",
+      "./hud.js?v=11": "./hud.js?v=13",
+      "./hud.js?v=12": "./hud.js?v=13"
     }
   }
   </script>
@@ -60,6 +61,11 @@
             <div class="vital-card"><div class="bar-header"><span>Energy</span><span id="energy-val">80%</span></div><div class="bar-container"><div class="bar-fill energy-bar" id="energy-bar"></div></div></div>
             <div class="vital-card"><div class="bar-header"><span>Hunger</span><span id="hunger-val">20%</span></div><div class="bar-container"><div class="bar-fill hunger-bar" id="hunger-bar"></div></div></div>
           </div>
+        </section>
+
+        <section class="dashboard-section" id="aida-life-section">
+          <div class="dashboard-section-head"><span>Aida</span><strong id="aida-status-pill">settling</strong></div>
+          <div id="aida-life-card" class="villager-life-card muted-empty">Waiting for Aida...</div>
         </section>
 
         <section class="dashboard-section dashboard-section--focus" id="intent-panel">
