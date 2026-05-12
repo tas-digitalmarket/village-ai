@@ -26,6 +26,12 @@ function clamp(value, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
+function clampCount(value, min = 0, max = 999) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -47,9 +53,9 @@ function normalizeWorldState(input = {}) {
     },
     well: { water_level: clamp(input.well?.water_level ?? DEFAULT_WORLD_STATE.well.water_level) },
     storage: {
-      food: Math.max(0, Math.round(Number(input.storage?.food ?? DEFAULT_WORLD_STATE.storage.food))),
-      wood: Math.max(0, Math.round(Number(input.storage?.wood ?? DEFAULT_WORLD_STATE.storage.wood))),
-      seeds: Math.max(0, Math.round(Number(input.storage?.seeds ?? DEFAULT_WORLD_STATE.storage.seeds)))
+      food: clampCount(input.storage?.food ?? DEFAULT_WORLD_STATE.storage.food),
+      wood: clampCount(input.storage?.wood ?? DEFAULT_WORLD_STATE.storage.wood),
+      seeds: clampCount(input.storage?.seeds ?? DEFAULT_WORLD_STATE.storage.seeds)
     },
     house: {
       condition: clamp(input.house?.condition ?? DEFAULT_WORLD_STATE.house.condition),
@@ -62,7 +68,7 @@ function normalizeWorldState(input = {}) {
     animals: {
       hunger: clamp(input.animals?.hunger ?? DEFAULT_WORLD_STATE.animals.hunger),
       health: clamp(input.animals?.health ?? DEFAULT_WORLD_STATE.animals.health),
-      produce: Math.max(0, Math.round(Number(input.animals?.produce ?? DEFAULT_WORLD_STATE.animals.produce)))
+      produce: clampCount(input.animals?.produce ?? DEFAULT_WORLD_STATE.animals.produce)
     },
     alerts: Array.isArray(input.alerts) ? input.alerts.slice(-8) : [],
     updated_at: input.updated_at || new Date().toISOString()
@@ -131,12 +137,134 @@ function buildAlerts(world) {
   if (world.house.cleanliness <= 25) alerts.push('The house is getting dirty.');
   if (world.house.condition <= 45) alerts.push('The house needs repairs.');
   if (world.animals.hunger >= 78) alerts.push('Animals are hungry.');
+  if (world.animals.health <= 45) alerts.push('Animals need care.');
+  if (world.motorcycle.condition <= 35) alerts.push('The motorcycle needs repair.');
   if (world.fields.east.moisture <= 18 || world.fields.west.moisture <= 18) alerts.push('A field is getting too dry.');
+  if (world.fields.east.health <= 45 || world.fields.west.health <= 45) alerts.push('A field is becoming weak.');
   if (world.fields.east.growth >= 85 || world.fields.west.growth >= 85) alerts.push('Some crops are ready to harvest.');
   return alerts;
 }
 
-function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny') {
+function applyActionConsequences(currentWorld, decision = {}, weather = 'sunny') {
+  const next = normalizeWorldState(currentWorld);
+  const action = decision.action || '';
+  const location = decision.target_location || decision.location || '';
+  const fieldKey = fieldKeyForLocation(location);
+  const field = next.fields[fieldKey];
+  const outcome = { action, success: true, notes: [] };
+
+  if (action === 'watering_crops') {
+    const waterUse = weather === 'rainy' || weather === 'stormy' ? 4 : 10;
+    if (next.well.water_level >= waterUse) {
+      field.moisture = clamp(field.moisture + (weather === 'sunny' ? 34 : 24));
+      field.health = clamp(field.health + 3);
+      next.well.water_level = clamp(next.well.water_level - waterUse);
+      outcome.notes.push('field watered');
+    } else {
+      field.health = clamp(field.health - 3);
+      outcome.success = false;
+      outcome.notes.push('not enough well water');
+    }
+  }
+
+  if (action === 'tending_crops') {
+    field.health = clamp(field.health + 14);
+    field.growth = clamp(field.growth + (field.moisture > 25 ? 4 : 1));
+    field.moisture = clamp(field.moisture - 4);
+    if (next.storage.seeds > 0 && field.growth < 25) {
+      next.storage.seeds -= 1;
+      field.growth = clamp(field.growth + 8);
+      outcome.notes.push('reseeded weak rows');
+    }
+    outcome.notes.push('crop health improved');
+  }
+
+  if (action === 'harvesting') {
+    const readiness = field.growth;
+    const healthFactor = field.health >= 70 ? 1 : field.health >= 45 ? 0.7 : 0.45;
+    const baseYield = readiness >= 90 ? 11 : readiness >= 75 ? 8 : readiness >= 55 ? 4 : 1;
+    const yieldAmount = Math.max(1, Math.round(baseYield * healthFactor));
+    next.storage.food += yieldAmount;
+    next.storage.seeds += readiness >= 75 ? 3 : 1;
+    field.growth = readiness >= 70 ? 8 : clamp(readiness - 22);
+    field.health = clamp(field.health - (readiness >= 70 ? 2 : 5));
+    outcome.notes.push(`harvested ${yieldAmount} food`);
+    if (readiness < 55) outcome.notes.push('early harvest was weak');
+  }
+
+  if (action === 'chopping_wood') {
+    const woodGain = weather === 'stormy' ? 2 : weather === 'rainy' ? 3 : 5;
+    next.storage.wood += woodGain;
+    next.motorcycle.fuel = clamp(next.motorcycle.fuel - 1);
+    outcome.notes.push(`collected ${woodGain} wood`);
+  }
+
+  if (action === 'eating') {
+    if (next.storage.food > 0) {
+      next.storage.food -= 1;
+      next.house.cleanliness = clamp(next.house.cleanliness - 1);
+      outcome.notes.push('used one food');
+    } else {
+      next.house.cleanliness = clamp(next.house.cleanliness - 2);
+      outcome.success = false;
+      outcome.notes.push('no food available');
+    }
+  }
+
+  if (action === 'tending_animals') {
+    if (next.storage.food > 0) {
+      next.storage.food -= 1;
+      next.animals.hunger = clamp(next.animals.hunger - 34);
+      next.animals.health = clamp(next.animals.health + 10);
+      outcome.notes.push('fed animals');
+    } else {
+      next.animals.hunger = clamp(next.animals.hunger - 8);
+      next.animals.health = clamp(next.animals.health + 2);
+      outcome.success = false;
+      outcome.notes.push('comforted animals without feed');
+    }
+  }
+
+  if (action === 'checking_motorcycle') {
+    const hasWood = next.storage.wood > 0;
+    next.motorcycle.condition = clamp(next.motorcycle.condition + (hasWood ? 14 : 6));
+    next.motorcycle.fuel = clamp(next.motorcycle.fuel - 1);
+    if (hasWood) next.storage.wood -= 1;
+    outcome.notes.push(hasWood ? 'used wood for repairs' : 'minor repair without parts');
+  }
+
+  if (action === 'fishing') {
+    const catchAmount = weather === 'stormy' ? 1 : weather === 'rainy' ? 4 : 3;
+    next.storage.food += catchAmount;
+    outcome.notes.push(`caught ${catchAmount} food`);
+  }
+
+  if (action === 'sleeping') {
+    next.house.cleanliness = clamp(next.house.cleanliness - 1);
+    outcome.notes.push('rested in bed');
+  }
+
+  if (action === 'sitting') {
+    next.house.cleanliness = clamp(next.house.cleanliness + 5);
+    outcome.notes.push('house became tidier');
+  }
+
+  if (action === 'wandering') {
+    if (weather === 'stormy' || weather === 'rainy') next.house.cleanliness = clamp(next.house.cleanliness - 1);
+    outcome.notes.push('checked the farm paths');
+  }
+
+  if (action === 'running_to_shelter') {
+    next.house.cleanliness = clamp(next.house.cleanliness - 1);
+    outcome.notes.push('reached shelter');
+  }
+
+  next.alerts = buildAlerts(next);
+  next.updated_at = new Date().toISOString();
+  return { worldState: writeWorldState(next), outcome };
+}
+
+function applyWorldDrift(currentWorld, weather = 'sunny') {
   const world = normalizeWorldState(currentWorld);
   const next = normalizeWorldState({
     ...world,
@@ -150,7 +278,10 @@ function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny')
       condition: world.house.condition + (weather === 'stormy' ? -2 : 0),
       cleanliness: world.house.cleanliness - 1
     },
-    motorcycle: { ...world.motorcycle },
+    motorcycle: {
+      condition: world.motorcycle.condition - (weather === 'stormy' ? 1 : 0),
+      fuel: world.motorcycle.fuel
+    },
     animals: {
       hunger: world.animals.hunger + 4,
       health: world.animals.health + (world.animals.hunger > 82 ? -4 : world.animals.hunger > 65 ? -1 : 1),
@@ -158,59 +289,15 @@ function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny')
     }
   });
 
-  const action = decision.action || '';
-  const location = decision.target_location || '';
-  const fieldKey = fieldKeyForLocation(location);
-  const field = next.fields[fieldKey];
-
-  if (action === 'watering_crops') {
-    if (next.well.water_level > 5) {
-      field.moisture = clamp(field.moisture + 30);
-      field.health = clamp(field.health + 2);
-      next.well.water_level = clamp(next.well.water_level - 8);
-    } else {
-      field.health = clamp(field.health - 2);
-    }
-  }
-
-  if (action === 'tending_crops') {
-    field.health = clamp(field.health + 12);
-    field.growth = clamp(field.growth + 2);
-    field.moisture = clamp(field.moisture - 3);
-  }
-
-  if (action === 'harvesting') {
-    const yieldAmount = field.growth >= 75 ? 9 : field.growth >= 45 ? 3 : 1;
-    next.storage.food += yieldAmount;
-    next.storage.seeds += field.growth >= 75 ? 3 : 1;
-    field.growth = field.growth >= 75 ? 10 : clamp(field.growth - 18);
-    field.health = clamp(field.health - 2);
-  }
-
-  if (action === 'chopping_wood') next.storage.wood += 5;
-
-  if (action === 'eating') {
-    if (next.storage.food > 0) next.storage.food -= 1;
-    else next.house.cleanliness = clamp(next.house.cleanliness - 1);
-  }
-
-  if (action === 'tending_animals') {
-    next.animals.hunger = clamp(next.animals.hunger - 28);
-    next.animals.health = clamp(next.animals.health + 8);
-    if (next.storage.food > 0) next.storage.food -= 1;
-  }
-
-  if (action === 'checking_motorcycle') {
-    next.motorcycle.condition = clamp(next.motorcycle.condition + 9);
-    next.motorcycle.fuel = clamp(next.motorcycle.fuel - 1);
-  }
-
-  if (action === 'sleeping') next.house.cleanliness = clamp(next.house.cleanliness - 1);
-  if (action === 'sitting') next.house.cleanliness = clamp(next.house.cleanliness + 2);
-
   next.alerts = buildAlerts(next);
   next.updated_at = new Date().toISOString();
   return writeWorldState(next);
+}
+
+function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny') {
+  const drifted = applyWorldDrift(currentWorld, weather);
+  const { worldState } = applyActionConsequences(drifted, decision, weather);
+  return worldState;
 }
 
 function summarizeWorldState(worldState) {
@@ -231,5 +318,7 @@ module.exports = {
   readWorldState,
   writeWorldState,
   updateWorldStateForTick,
+  applyWorldDrift,
+  applyActionConsequences,
   summarizeWorldState
 };
