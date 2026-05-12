@@ -6,12 +6,13 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildWorld } from './world.js?v=7';
+import { buildWorldExpansion } from './world-expansion.js?v=1';
 import { Villager } from './character.js?v=7';
 import { WeatherFX } from './weather-fx.js?v=7';
 import { HUD } from './hud.js?v=7';
 import { CreatorPanel } from './creator.js?v=7';
 
-// ── Renderer ─────────────────────────────────────────────────
+// ── Renderer ───────────────────────────────────────────────────
 const canvas = document.getElementById('world-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -22,24 +23,24 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-// ── Scene ─────────────────────────────────────────────────────
+// ── Scene ────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0f172a); // slate-900
-scene.fog = new THREE.FogExp2(0x0f172a, 0.009);
+scene.background = new THREE.Color(0x0f172a);
+scene.fog = new THREE.FogExp2(0x0f172a, 0.0075);
 
-// ── Camera ────────────────────────────────────────────────────
+// ── Camera ───────────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 500);
-camera.position.set(14, 16, 14);
+camera.position.set(18, 20, 18);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.maxPolarAngle = Math.PI / 2.05;
 controls.minDistance = 4;
-controls.maxDistance = 70;
-controls.target.set(0, 0, 2); 
+controls.maxDistance = 110;
+controls.target.set(0, 0, 2);
 
-// ── Lights ────────────────────────────────────────────────────
+// ── Lights ───────────────────────────────────────────────────────
 const hemiLight = new THREE.HemisphereLight(0xc8e8ff, 0x8a6040, 0.6);
 scene.add(hemiLight);
 
@@ -58,7 +59,7 @@ const moonLight = new THREE.DirectionalLight(0x4466aa, 0.0);
 moonLight.position.set(-20, 25, -10);
 scene.add(moonLight);
 
-// ── Realistic Bedside Lamp inside house ─────────────────
+// ── Realistic Bedside Lamp inside house ──────────────────────────
 const nightLamp = new THREE.PointLight(0xff9944, 0.0, 9, 1.6);
 nightLamp.position.set(-3.4, 2.0, -10.5);
 scene.add(nightLamp);
@@ -66,7 +67,6 @@ scene.add(nightLamp);
 const lampGroup = new THREE.Group();
 lampGroup.position.set(-3.4, 0.41, -10.5);
 
-// Nightstand
 const nsMat  = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.85 });
 const nsTop  = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.36), nsMat);
 nsTop.position.y = 0.62;
@@ -77,18 +77,15 @@ lampGroup.add(nsTop);
   lampGroup.add(leg);
 });
 
-// Lamp base (flat disc)
 const metMat = new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.3, metalness: 0.7 });
 const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.025, 10), metMat);
 lampBase.position.y = 0.655;
 lampGroup.add(lampBase);
 
-// Lamp pole
 const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.32, 8), metMat);
 lampPole.position.y = 0.83;
 lampGroup.add(lampPole);
 
-// Lampshade (truncated cone, open bottom, DoubleSide)
 const shadeMat = new THREE.MeshStandardMaterial({
   color: 0xf5e0be, roughness: 0.9, side: THREE.DoubleSide,
   emissive: 0xff9944, emissiveIntensity: 0
@@ -97,14 +94,12 @@ const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.07, 0.16, 12
 lampShade.position.y = 0.995;
 lampGroup.add(lampShade);
 
-// Shade top cap
 const capMat = new THREE.MeshStandardMaterial({ color: 0xf5e0be, roughness: 0.9 });
 const shadeCap = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), capMat);
 shadeCap.rotation.x = -Math.PI / 2;
 shadeCap.position.y = 1.075;
 lampGroup.add(shadeCap);
 
-// Glowing bulb inside shade
 const bulbMat = new THREE.MeshStandardMaterial({
   color: 0xffdd88, emissive: 0xffdd88, emissiveIntensity: 0
 });
@@ -114,7 +109,7 @@ lampGroup.add(bulbMesh);
 
 scene.add(lampGroup);
 
-// ── Post-processing ───────────────────────────────────────────
+// ── Post-processing ─────────────────────────────────────────────
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 
@@ -125,15 +120,16 @@ const bloom = new UnrealBloomPass(
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
-// ── Components ───────────────────────────────────────────────
+// ── Components ──────────────────────────────────────────────────
 buildWorld(scene);
+buildWorldExpansion(scene);
 const villager = new Villager(scene);
 const weatherFX = new WeatherFX(scene, camera);
 const hud = new HUD();
-window.hud = hud; // EXPORT to window for interpolation
+window.hud = hud;
 const creator = new CreatorPanel((directives) => hud.updateSchedule(directives));
 
-// ── Sky / Day-Night Helpers ───────────────────────────────────
+// ── Sky / Day-Night Helpers ─────────────────────────────────────
 let worldHour = 6;
 
 const SKY_PRESETS = {
@@ -173,7 +169,6 @@ function updateSky(hour) {
   hemiLight.intensity = p.hemi;
   moonLight.intensity = p.moon;
 
-  // Night lamp: glow inside house when dark (after 21:00 or before 6:00)
   const isNight = hour > 21 || hour < 6;
   nightLamp.intensity = isNight ? 1.8 : 0.0;
   shadeMat.emissiveIntensity = isNight ? 0.55 : 0.0;
@@ -197,30 +192,24 @@ function updateSky(hour) {
   renderer.toneMappingExposure = hour >= 6 && hour <= 18 ? 1.2 : 0.85;
 }
 
-// ── WebSocket with auto-reconnect ────────────────────────────
 let ws = null;
 let wsReconnectDelay = 2000;
 let wsConnected = false;
 
 function applyState(d) {
-    if (d.world_time) {
-      const [h, m] = d.world_time.split(':').map(Number);
-      const serverHour = h + m / 60;
-      // Only snap worldHour if server differs by more than 2 world-minutes (0.033h).
-      // Smaller differences are ignored — local animation clock interpolates smoothly.
-      // This prevents the double-refresh / backward-jump glitch on tick boundaries.
-      const diff = serverHour - worldHour;
-      if (Math.abs(diff) > 0.034) {
-        worldHour = serverHour;
-      }
-      // Always update the HUD text display from server source-of-truth
-      hud.setTime(d.world_time, h);
+  if (d.world_time) {
+    const [h, m] = d.world_time.split(':').map(Number);
+    const serverHour = h + m / 60;
+    const diff = serverHour - worldHour;
+    if (Math.abs(diff) > 0.034) {
+      worldHour = serverHour;
     }
+    hud.setTime(d.world_time, h);
+  }
   villager.setState(d);
   if (d.weather) weatherFX.setWeather(d.weather);
   hud.update(d);
 
-  // Update the upcoming schedule panel if data is included in state
   if (d.upcomingSchedule) {
     hud.updateSchedule(d.upcomingSchedule);
   }
@@ -260,7 +249,7 @@ function connectWS() {
     wsConnected = true;
     wsReconnectDelay = 2000;
     hud.setConnected(true);
-    fetchDirectivesFallback(); // ensure directives are sync'd
+    fetchDirectivesFallback();
   };
 
   ws.onclose = () => {
@@ -284,7 +273,6 @@ connectWS();
 setTimeout(() => { if (!wsConnected) fetchStateFallback(); }, 4000);
 setInterval(() => { if (!wsConnected) { fetchStateFallback(); fetchDirectivesFallback(); } }, 10000);
 
-// ── View Toggle Logic ─────────────────────────────────────────
 let isInterior = false;
 const viewBtn = document.getElementById('view-toggle');
 if (viewBtn) {
@@ -303,7 +291,6 @@ window.addEventListener('resize', () => {
   composer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ── Animation Loop ─────────────────────────────────────────────
 const clock = new THREE.Clock();
 
 function animate() {
@@ -321,19 +308,17 @@ function animate() {
   if (showInterior) {
     controls.target.lerp(new THREE.Vector3(0, 1.2, -8), 0.08);
     if (camera.position.distanceTo(new THREE.Vector3(0, 2, -5)) > 5) {
-       camera.position.lerp(new THREE.Vector3(3.5, 3.5, -4), 0.04);
+      camera.position.lerp(new THREE.Vector3(3.5, 3.5, -4), 0.04);
     }
     controls.maxDistance = 10;
   } else {
     controls.target.lerp(new THREE.Vector3(vPos.x, 0.5, vPos.z), 0.05);
-    controls.maxDistance = 70;
+    controls.maxDistance = 110;
   }
 
-  // World clock mirrors the server: 30 game minutes every 5 real minutes.
   worldHour += delta * (0.5 / (5 * 60));
   if (worldHour >= 24) worldHour = 0;
 
-  // Smoothly update HUD time so user sees minutes passing
   const currentH = Math.floor(worldHour);
   const currentM = Math.floor((worldHour - currentH) * 60);
   const timeStr = `${currentH.toString().padStart(2, '0')}:${currentM.toString().padStart(2, '0')}`;
