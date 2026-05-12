@@ -41,7 +41,7 @@ function buildDailyGoals(state = {}, world = {}, risk = null) {
   const house = world.house || {};
   const motorcycle = world.motorcycle || {};
 
-  if ((risk?.overall || 0) >= 75 && risk.topRisk?.task) {
+  if ((risk?.overall || 0) >= 70 && risk.topRisk?.task) {
     goals.push(goal('control_risk', 'Control the biggest risk', risk.summary, 95, [risk.topRisk.task]));
   }
 
@@ -53,8 +53,8 @@ function buildDailyGoals(state = {}, world = {}, risk = null) {
   }
 
   const dryField = east.moisture <= west.moisture ? { key: 'east', field: east, location: 'east_field' } : { key: 'west', field: west, location: 'west_field' };
-  if ((dryField.field.moisture ?? 100) <= 35 && well > 10) {
-    goals.push(goal('protect_crops', 'Protect the crops', `${dryField.field.label || dryField.key} needs water`, 82, [
+  if ((dryField.field.moisture ?? 100) <= 45 && well > 10) {
+    goals.push(goal('protect_crops', 'Protect the crops', `${dryField.field.label || dryField.key} needs attention`, 82, [
       { label: 'Water Vulnerable Field', action: 'watering_crops', location: dryField.location, duration: 30, reason: 'field may dry out' },
       { label: 'Tend Crop Rows', action: 'tending_crops', location: dryField.location, duration: 30, reason: 'keep crop health stable' }
     ]));
@@ -93,18 +93,44 @@ function buildDailyGoals(state = {}, world = {}, risk = null) {
   return goals.sort((a, b) => b.priority - a.priority).slice(0, 5);
 }
 
+function mergeGoalProgress(freshGoals, oldGoals = []) {
+  return freshGoals.map(fresh => {
+    const old = oldGoals.find(g => g.id === fresh.id);
+    if (!old) return fresh;
+    const steps = fresh.steps.map(step => {
+      const oldStep = (old.steps || []).find(s => s.action === step.action && s.location === step.location && s.done);
+      return oldStep ? { ...step, done: true, completed_at: oldStep.completed_at } : step;
+    });
+    const done = steps.length > 0 && steps.every(step => step.done);
+    return { ...fresh, steps, status: done ? 'done' : old.status === 'done' ? 'done' : fresh.status, completed_at: old.completed_at };
+  });
+}
+
 function ensureDailyPlan(state = {}, world = {}, risk = null) {
   const day = state.day || 1;
   const current = state.daily_plan;
-  if (current?.day === day && Array.isArray(current.goals) && current.goals.length) return state;
+  const freshGoals = buildDailyGoals(state, world, risk);
+  const hasRiskGoal = current?.goals?.some(g => g.id === 'control_risk');
+  const hasCropGoal = current?.goals?.some(g => g.id === 'protect_crops');
+  const needsRefresh = !current ||
+    current.day !== day ||
+    current.version !== 2 ||
+    !Array.isArray(current.goals) ||
+    current.goals.length < Math.min(2, freshGoals.length) ||
+    ((risk?.overall || 0) >= 70 && !hasRiskGoal) ||
+    (freshGoals.some(g => g.id === 'protect_crops') && !hasCropGoal);
+
+  if (!needsRefresh) return state;
 
   return {
     ...state,
     daily_plan: {
       day,
-      created_at: state.world_time || '06:00',
-      goals: buildDailyGoals(state, world, risk),
-      reflections: []
+      version: 2,
+      created_at: current?.created_at || state.world_time || '06:00',
+      refreshed_at: current ? state.world_time || '06:00' : null,
+      goals: mergeGoalProgress(freshGoals, current?.goals || []),
+      reflections: current?.reflections || []
     }
   };
 }
