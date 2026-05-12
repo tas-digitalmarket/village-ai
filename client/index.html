@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css?v=16" />
   <link rel="stylesheet" href="world-state.css?v=3" />
-  <link rel="stylesheet" href="dashboard-tabs.css?v=1" />
+  <link rel="stylesheet" href="dashboard-tabs.css?v=2" />
   <style>.character-panel.is-hidden{display:none!important}.character-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.character-tab{min-height:38px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-weight:800;cursor:pointer}.character-tab.active{background:rgba(53,212,138,.14);border-color:rgba(53,212,138,.38);color:var(--ink)}.relationship-dialogue{display:flex;flex-direction:column;gap:8px}.dialogue-line{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 10px}.dialogue-line strong{color:var(--primary);font-size:.74rem}.dialogue-line span{color:var(--muted);font-size:.76rem;line-height:1.45;overflow-wrap:anywhere}.relationship-meter{border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);border-radius:8px;padding:9px 10px}</style>
   <script type="importmap">
   {
@@ -57,8 +57,8 @@
         <section class="dashboard-section relationship-console" id="arash-aida-console">
           <div class="dashboard-section-head"><span>Arash & Aida</span><strong id="arash-aida-pill">distant</strong></div>
           <div id="arash-aida-dialogue" class="relationship-dialogue">
-            <div class="dialogue-line"><strong>Arash</strong><span>Busy with the farm.</span></div>
-            <div class="dialogue-line"><strong>Aida</strong><span>Settling into her homestead.</span></div>
+            <div class="dialogue-line dialogue-line--arash"><strong>Arash</strong><span>Busy with the farm.</span></div>
+            <div class="dialogue-line dialogue-line--aida"><strong>Aida</strong><span>Settling into her homestead.</span></div>
           </div>
         </section>
 
@@ -97,7 +97,12 @@
       </div>
     </aside>
 
-    <div id="hud-center"><button id="view-toggle" class="view-inside-btn"><span>🏠</span> View Inside</button></div>
+    <div id="hud-center" class="camera-tools">
+      <button id="view-toggle" class="view-inside-btn"><span>🏠</span> View Inside</button>
+      <button id="focus-arash" class="view-inside-btn camera-focus-btn" type="button">Arash</button>
+      <button id="focus-aida" class="view-inside-btn camera-focus-btn" type="button">Aida</button>
+      <button id="free-camera" class="view-inside-btn camera-focus-btn" type="button">Free</button>
+    </div>
   </div>
 
   <div id="creator-toggle" class="glass-panel">💬</div>
@@ -116,7 +121,7 @@
     <div class="creator-input-area"><textarea id="creator-input" placeholder="Give Arash a command..."></textarea><button id="creator-send">Send</button></div>
   </div>
 
-  <script type="module" src="main.js?v=15"></script>
+  <script type="module" src="main.js?v=16"></script>
   <script type="module" src="clock-smooth.js?v=2"></script>
 </body>
 </html>
