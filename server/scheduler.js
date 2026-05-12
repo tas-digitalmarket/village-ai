@@ -173,6 +173,11 @@ async function runMinutePulse(broadcast) {
       firedKeys.clear();
     }
 
+    if (nextState.current_action !== 'idle' && !nextState.task_ends_at_abs) {
+      nextState = idleState(nextState);
+      thought = 'کار قبلی‌ام تمام شده؛ تا برنامه بعدی آرام می‌مانم.';
+    }
+
     if (nextState.current_action !== 'idle' && nextState.task_ends_at_abs && abs >= Number(nextState.task_ends_at_abs)) {
       nextState = idleState(nextState);
       thought = 'کارم تمام شد؛ تا کار بعدی کمی آرام می‌مانم.';
