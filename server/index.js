@@ -10,6 +10,7 @@ const {
   getDirectives, addDirective, removeDirective, clearAllDirectives,
   getCreatorMessages, addCreatorMessage, addMemory
 } = require('./database');
+const { readWorldState } = require('./world-state');
 const { startScheduler } = require('./scheduler');
 const { processDirective } = require('./director');
 const { OPENROUTER_API_KEY, SAMBANOVA_API_KEY, CREATOR_TOKEN, DEBUG_ENABLED } = require('./config');
@@ -18,7 +19,6 @@ const app    = express();
 const server = http.createServer(app);
 const wss    = new WebSocket.Server({ server });
 
-// Simple in-memory log buffer for debugging
 const serverLogs = [];
 const originalLog = console.log;
 const originalWarn = console.warn;
@@ -49,7 +49,7 @@ function escapeHtml(value) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/\"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
 
@@ -74,30 +74,25 @@ function requireCreatorAuth(req, res, next) {
   next();
 }
 
-// ── WebSocket ──────────────────────────────────────────────────
 const clients = new Set();
 
 wss.on('connection', (ws) => {
   clients.add(ws);
   console.log(`[WS] Client connected. Total: ${clients.size}`);
 
-  // Send current state immediately on connect
   try {
-    const state    = getState();
+    const state = getState();
     const memories = getMemories(5);
     const directives = getDirectives();
-    
-    // Build schedule from directives + daily routine so it's not empty until first tick
     const { generateWeather } = require('./weather');
     const { buildUpcomingSchedule } = require('./scheduler');
-    
-    // We pass 1 for tick count to get current weather
     const weather = state.weather || generateWeather(1);
     const upcomingSchedule = buildUpcomingSchedule(directives, state.world_time || '06:00', weather);
-    
-    ws.send(JSON.stringify({ 
-      type: 'state', 
-      data: { ...state, memories, upcomingSchedule } 
+    const worldState = readWorldState();
+
+    ws.send(JSON.stringify({
+      type: 'state',
+      data: { ...state, memories, upcomingSchedule, world_state: worldState }
     }));
     ws.send(JSON.stringify({ type: 'directives', data: directives }));
   } catch (e) {
@@ -118,24 +113,21 @@ wss.on('connection', (ws) => {
 function broadcast(data) {
   const message = JSON.stringify(data);
   clients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(message);
-    }
+    if (ws.readyState === WebSocket.OPEN) ws.send(message);
   });
 }
 
-// ── REST API — State & Logs ───────────────────────────────────
 app.get('/api/state', (req, res) => {
-  const state    = getState();
+  const state = getState();
   const memories = getMemories(10);
-  res.json({ ...state, memories });
+  const worldState = readWorldState();
+  res.json({ ...state, memories, world_state: worldState });
 });
 
 app.get('/api/logs', (req, res) => {
   res.json(getMemories(50));
 });
 
-// ── REST API — Directives ─────────────────────────────────────
 app.get('/api/directives', (req, res) => {
   const { buildUpcomingSchedule } = require('./scheduler');
   const state = getState();
@@ -145,36 +137,21 @@ app.get('/api/directives', (req, res) => {
 
 app.post('/api/directive', async (req, res) => {
   const { message } = req.body;
-  if (!message || !message.trim()) {
-    return res.status(400).json({ error: 'Message is required' });
-  }
+  if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
   try {
-    const state    = getState();
+    const state = getState();
     const memories = getMemories(5);
-
-    // Store creator's message
     addCreatorMessage('creator', message.trim());
-
-    // Process with Gemini
     const result = await processDirective(message.trim(), state, memories);
-
-    // Store Arash's response
     addCreatorMessage('arash', result.arash_response);
-
-    // Add to Arash's memory
     if (result.memory) addMemory(result.memory);
 
-    // Save each directive
     const savedDirectives = [];
     if (result.directives && result.directives.length > 0) {
-      result.directives.forEach(d => {
-        const saved = addDirective(d);
-        savedDirectives.push(saved);
-      });
+      result.directives.forEach(d => savedDirectives.push(addDirective(d)));
     }
 
-    // Handle immediate action — force a broadcast
     if (result.immediate_action) {
       const { LOCATIONS } = require('./ai');
       const pos = LOCATIONS[result.immediate_action.location] || { x: 0, z: 0 };
@@ -192,31 +169,18 @@ app.post('/api/directive', async (req, res) => {
         data: {
           ...newState,
           thought: result.immediate_action.thought || 'خالقم این را خواست...',
-          memories: getMemories(5)
+          memories: getMemories(5),
+          world_state: readWorldState()
         }
       });
     }
 
-    // Broadcast new directives to all clients
     const { buildUpcomingSchedule } = require('./scheduler');
     const upcomingSchedule = buildUpcomingSchedule(getDirectives(), state.world_time || '06:00', state.weather || 'sunny');
     broadcast({ type: 'directives', data: upcomingSchedule });
+    broadcast({ type: 'creator_message', data: { arash_response: result.arash_response, directives: savedDirectives } });
 
-    // Broadcast the creator message
-    broadcast({
-      type: 'creator_message',
-      data: {
-        arash_response: result.arash_response,
-        directives: savedDirectives
-      }
-    });
-
-    res.json({
-      arash_response: result.arash_response,
-      directives: savedDirectives,
-      immediate_action: result.immediate_action || null
-    });
-
+    res.json({ arash_response: result.arash_response, directives: savedDirectives, immediate_action: result.immediate_action || null });
   } catch (err) {
     console.error('[API] /api/directive error:', err.message);
     res.status(500).json({ error: 'Failed to process directive' });
@@ -241,15 +205,12 @@ app.delete('/api/directives', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── REST API — Creator Messages ───────────────────────────────
 app.get('/api/creator-messages', (req, res) => {
   res.json(getCreatorMessages(30));
 });
 
 app.get('/api/debug/logs', requireCreatorAuth, (req, res) => {
-  if (!DEBUG_ENABLED) {
-    return res.status(404).json({ error: 'Debug logs are disabled' });
-  }
+  if (!DEBUG_ENABLED) return res.status(404).json({ error: 'Debug logs are disabled' });
   const apiKey = OPENROUTER_API_KEY && OPENROUTER_API_KEY !== 'MISSING_KEY'
     ? OPENROUTER_API_KEY
     : SAMBANOVA_API_KEY && SAMBANOVA_API_KEY !== 'MISSING_KEY'
@@ -267,15 +228,11 @@ app.get('/api/debug/logs', requireCreatorAuth, (req, res) => {
 });
 
 app.get('/api/debug/test-ai', requireCreatorAuth, async (req, res) => {
-  if (!DEBUG_ENABLED) {
-    return res.status(404).json({ error: 'Debug AI test is disabled' });
-  }
+  if (!DEBUG_ENABLED) return res.status(404).json({ error: 'Debug AI test is disabled' });
   const hasAiKey =
     (OPENROUTER_API_KEY && OPENROUTER_API_KEY !== 'MISSING_KEY') ||
     (SAMBANOVA_API_KEY && SAMBANOVA_API_KEY !== 'MISSING_KEY');
-  if (!hasAiKey) {
-    return res.status(500).json({ error: 'AI API key is missing' });
-  }
+  if (!hasAiKey) return res.status(500).json({ error: 'AI API key is missing' });
   try {
     const { askAI } = require('./ai');
     const result = await askAI(getState(), [], 'sunny');
@@ -285,12 +242,10 @@ app.get('/api/debug/test-ai', requireCreatorAuth, async (req, res) => {
   }
 });
 
-// ── Health check ──────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'alive', uptime: process.uptime(), timestamp: new Date().toISOString() });
 });
 
-// ── Boot ──────────────────────────────────────────────────────
 initDatabase();
 startScheduler(broadcast);
 
