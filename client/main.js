@@ -8,9 +8,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildWorld } from './world.js?v=7';
 import { buildWorldExpansion } from './world-expansion.js?v=2';
 import { Villager } from './character.js?v=7';
+import { AidaCharacter } from './ida-character.js?v=1';
 import { WeatherFX } from './weather-fx.js?v=7';
 import { HUD } from './hud.js?v=7';
-import { CreatorPanel } from './creator.js?v=7';
+import { CreatorPanel } from './creator.js?v=8';
 
 const canvas = document.getElementById('world-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -120,6 +121,7 @@ composer.addPass(new OutputPass());
 buildWorld(scene);
 buildWorldExpansion(scene);
 const villager = new Villager(scene);
+const aida = new AidaCharacter(scene);
 const weatherFX = new WeatherFX(scene, camera);
 const hud = new HUD();
 window.hud = hud;
@@ -202,6 +204,7 @@ function applyState(d) {
     hud.setTime(d.world_time, h);
   }
   villager.setState(d);
+  if (d.ida_state) aida.setState(d.ida_state);
   if (d.weather) weatherFX.setWeather(d.weather);
   hud.update(d);
 
@@ -260,6 +263,10 @@ function connectWS() {
       if (msg.type === 'state') applyState(msg.data);
       if (msg.type === 'directives') hud.updateSchedule(msg.data);
       if (msg.type === 'creator_message') creator.onNewMessage(msg.data.arash_response);
+      if (msg.type === 'aida_message') {
+        if (msg.data?.ida_state) aida.setState(msg.data.ida_state);
+        creator.onNewAidaMessage(msg.data?.aida_response || '');
+      }
     } catch (e) { /* ignore */ }
   };
 }
@@ -309,6 +316,7 @@ function animate() {
 
   controls.update();
   villager.update(delta, clock.getElapsedTime());
+  aida.update(delta);
   weatherFX.update(delta, clock.getElapsedTime());
 
   worldHour += delta * (0.5 / (5 * 60));
