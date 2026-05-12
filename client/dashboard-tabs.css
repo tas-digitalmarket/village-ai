@@ -19,9 +19,27 @@
   padding: 9px 10px;
 }
 
+.dialogue-line--arash {
+  border-color: rgba(143, 199, 255, .25);
+  background: rgba(143, 199, 255, .055);
+}
+
+.dialogue-line--aida {
+  border-color: rgba(255, 179, 207, .25);
+  background: rgba(255, 179, 207, .055);
+}
+
 .dialogue-line strong {
   color: var(--primary);
   font-size: .74rem;
+}
+
+.dialogue-line--arash strong {
+  color: #8fc7ff;
+}
+
+.dialogue-line--aida strong {
+  color: #ffb3cf;
 }
 
 .dialogue-line span {
@@ -73,4 +91,34 @@
 .character-panel--aida .villager-life-card {
   background: rgba(243, 195, 77, .055);
   border-color: rgba(243, 195, 77, .22);
+}
+
+.camera-tools {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+
+.camera-focus-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: .82rem;
+}
+
+@media (max-width: 640px) {
+  .dialogue-line {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .camera-tools {
+    max-width: calc(100vw - 24px);
+  }
+
+  .camera-focus-btn {
+    min-height: 34px;
+    padding: 0 10px;
+  }
 }
