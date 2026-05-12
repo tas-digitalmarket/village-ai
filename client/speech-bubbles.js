@@ -36,7 +36,7 @@ export class CharacterSpeechBubbles {
       return;
     }
 
-    if (nextText !== item.text || Date.now() > item.expiresAt) {
+    if (nextText !== item.text) {
       item.expiresAt = Date.now() + BUBBLE_TTL_MS;
     }
 
