@@ -1,194 +1,246 @@
-// scheduler.js — Tick engine with Creator directive priority
-const cron = require('node-cron');
+// scheduler.js - minute pulse engine. Every 2 real seconds equals 1 Arash-world minute.
 const {
   getState, saveState, getMemories, addMemory, logWeather,
-  findDirectiveForTime, removeDirective, getDirectives,
-  getFiredDirectiveIds, addFiredDirectiveId, clearFiredDirectiveIds
+  removeDirective, getDirectives, WORLD_DAY_REAL_MINUTES
 } = require('./database');
-const { askAI, LOCATIONS } = require('./ai');
+const { LOCATIONS } = require('./ai');
 const { generateWeather } = require('./weather');
+const { readWorldState, updateWorldStateForTick } = require('./world-state');
+
+const WORLD_MINUTE_REAL_MS = 2000;
+const DEFAULT_TASK_DURATION_MINUTES = 30;
+const WORLD_DRIFT_MINUTES = 30;
+const WAKE_UP_MINUTE = 6 * 60;
+const SLEEP_START_MINUTE = 22 * 60;
 
 let tickCount = 0;
+const firedKeys = new Set();
 
-// World time advances 30 real minutes per tick
-// Tick runs every 60 real seconds → 30 world-minutes per 60s
-const WORLD_MINUTES_PER_TICK = 30;
-
-function getFallbackAction(h, weather, state) {
-  const isInside = state.position_z < -5;
-  let action = 'idle', loc = 'path_center';
-
-  if ((weather === 'rainy' || weather === 'stormy') && !isInside) {
-    action = 'running_to_shelter'; loc = 'home';
-  }
-  else if (state.energy < 15) { action = 'sleeping';          loc = 'bed'; }
-  else if (state.hunger > 85) { action = 'eating';            loc = 'table'; }
-  else if (h >= 22 || h < 8)  { action = 'sleeping';           loc = 'bed'; }
-  else if (h < 8.5)           { action = 'eating';             loc = 'table'; }
-  else if (h < 10.5)          { action = 'watering_crops';     loc = 'east_field'; }
-  else if (h < 12)            { action = 'chopping_wood';      loc = 'wood_stump'; }
-  else if (h < 13.5)          { action = 'sitting';            loc = 'bed'; }
-  else if (h < 15)            { action = 'tending_crops';      loc = 'west_field'; }
-  else if (h < 17.5)          { action = 'harvesting';         loc = 'east_field'; }
-  else if (h < 18.5)          { action = 'wandering';          loc = 'path_center'; }
-  else if (h < 20)            { action = 'eating';             loc = 'table'; }
-  else if (h < 22)            { action = 'sitting';            loc = 'bed'; }
-  
-  const pos = LOCATIONS[loc] || { x: 0, z: 0 };
-  return { action, loc, pos };
-}
-
-function advanceWorldTime(currentTime, minutesToAdd = WORLD_MINUTES_PER_TICK) {
-  const [h, m] = (currentTime || '06:00').split(':').map(Number);
-  const total = h * 60 + m + minutesToAdd;
-  const nh = Math.floor(total / 60) % 24;
-  const nm = total % 60;
-  return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
-}
+const ROUTINE_MILESTONES = [
+  { time: '08:00', label: 'Wake Up & Breakfast', action: 'eating', location: 'table', duration: 25, source: 'routine' },
+  { time: '09:00', label: 'Water the Fields', action: 'watering_crops', location: 'east_field', duration: 35, source: 'routine' },
+  { time: '10:30', label: 'Chop Wood', action: 'chopping_wood', location: 'wood_stump', duration: 35, source: 'routine' },
+  { time: '12:00', label: 'Lunch', action: 'eating', location: 'table', duration: 25, source: 'routine' },
+  { time: '12:30', label: 'Afternoon Rest', action: 'sitting', location: 'bed', duration: 45, source: 'routine' },
+  { time: '13:30', label: 'Tend Crops', action: 'tending_crops', location: 'west_field', duration: 35, source: 'routine' },
+  { time: '15:00', label: 'Check Motorcycle', action: 'checking_motorcycle', location: 'motorcycle', duration: 25, source: 'routine' },
+  { time: '16:00', label: 'Harvest Crops', action: 'harvesting', location: 'east_field', duration: 45, source: 'routine' },
+  { time: '17:30', label: 'Wander the Farm', action: 'wandering', location: 'path_center', duration: 35, source: 'routine' },
+  { time: '18:30', label: 'Dinner', action: 'eating', location: 'table', duration: 25, source: 'routine' },
+  { time: '19:30', label: 'Evening Rest', action: 'sitting', location: 'bed', duration: 50, source: 'routine' },
+  { time: '21:00', label: 'Evening Stroll', action: 'wandering', location: 'path_center', duration: 35, source: 'routine' },
+  { time: '22:00', label: 'Sleep', action: 'sleeping', location: 'bed', duration: 480, source: 'routine' }
+];
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-// Build today's upcoming schedule based on Creator directives + AI routine hints
-function buildUpcomingSchedule(directives, worldTime, weather) {
+function parseMinutes(time) {
+  const [h = 0, m = 0] = String(time || '00:00').split(':').map(Number);
+  return h * 60 + m;
+}
+
+function absoluteMinute(day, worldTime) {
+  return ((day || 1) - 1) * 1440 + parseMinutes(worldTime);
+}
+
+function taskKey(day, item) {
+  return `${day}:${item.source}:${item.id || item.time}:${item.action}`;
+}
+
+function isNightMinute(minute) {
+  return minute >= SLEEP_START_MINUTE || minute < WAKE_UP_MINUTE;
+}
+
+function nextWakeAbs(absMinute, currentMinute) {
+  if (currentMinute < WAKE_UP_MINUTE) return absMinute + (WAKE_UP_MINUTE - currentMinute);
+  return absMinute + (1440 - currentMinute) + WAKE_UP_MINUTE;
+}
+
+function actionEnergyDelta(action) {
+  if (action === 'sleeping') return 2;
+  if (action === 'eating' || action === 'sitting') return 1;
+  if (action === 'running_to_shelter') return -2;
+  return -1;
+}
+
+function actionHungerDelta(action) {
+  if (action === 'eating') return -12;
+  if (action === 'sleeping') return 1;
+  return 1;
+}
+
+function normalizeDirective(directive) {
+  return {
+    ...directive,
+    source: 'creator',
+    label: directive.label || directive.action || 'Creator task',
+    location: directive.location || directive.target_location || 'path_center',
+    duration: Number(directive.duration || DEFAULT_TASK_DURATION_MINUTES)
+  };
+}
+
+function dueCreatorTask(directives, day, worldTime) {
+  const minute = parseMinutes(worldTime);
+  return directives.map(normalizeDirective).find(d => {
+    if (!d.time) return false;
+    if (parseMinutes(d.time) !== minute) return false;
+    return !firedKeys.has(taskKey(day, d));
+  }) || null;
+}
+
+function dueRoutineTask(day, worldTime) {
+  const minute = parseMinutes(worldTime);
+  return ROUTINE_MILESTONES.find(item => {
+    const start = parseMinutes(item.time);
+    const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES));
+    if (minute < start || minute >= start + duration) return false;
+    return !firedKeys.has(taskKey(day, item));
+  }) || null;
+}
+
+function buildUpcomingSchedule(directives, worldTime) {
   const schedule = [];
-
-  // Add Creator directives
-  if (directives && directives.length > 0) {
-    directives.forEach(d => {
-      schedule.push({
-        id: d.id,
-        time: d.time,
-        label: d.label || d.action,
-        action: d.action,
-        recurring: d.recurring,
-        source: 'creator'
-      });
+  (directives || []).map(normalizeDirective).forEach(d => {
+    schedule.push({
+      id: d.id,
+      time: d.time,
+      label: d.label || d.action,
+      action: d.action,
+      recurring: d.recurring,
+      source: 'creator'
     });
-  }
+  });
 
-  // Add daily AI routine milestones (always shown)
-  const routineMilestones = [
-    { time: '08:00', label: 'Wake Up & Breakfast',   action: 'eating',              source: 'routine' },
-    { time: '09:00', label: 'Water the Fields',      action: 'watering_crops',      source: 'routine' },
-    { time: '10:30', label: 'Chop Wood',             action: 'chopping_wood',       source: 'routine' },
-    { time: '12:00', label: 'Lunch',                 action: 'eating',              source: 'routine' },
-    { time: '12:30', label: 'Afternoon Rest',        action: 'sitting',             source: 'routine' },
-    { time: '13:30', label: 'Tend Crops',            action: 'tending_crops',       source: 'routine' },
-    { time: '15:00', label: 'Check Motorcycle',      action: 'checking_motorcycle', source: 'routine' },
-    { time: '16:00', label: 'Harvest Crops',         action: 'harvesting',          source: 'routine' },
-    { time: '17:30', label: 'Wander the Farm',       action: 'wandering',           source: 'routine' },
-    { time: '18:30', label: 'Dinner',                action: 'eating',              source: 'routine' },
-    { time: '19:30', label: 'Evening Rest',          action: 'sitting',             source: 'routine' },
-    { time: '21:00', label: 'Evening Stroll',        action: 'wandering',           source: 'routine' },
-    { time: '22:00', label: 'Sleep',                 action: 'sleeping',            source: 'routine' },
-  ];
-
-  // Only add routine items that don't conflict with Creator directives
   const creatorTimes = new Set(schedule.map(s => s.time));
-  routineMilestones.forEach(m => {
+  ROUTINE_MILESTONES.forEach(m => {
     if (!creatorTimes.has(m.time)) {
-      schedule.push(m);
+      schedule.push({ time: m.time, label: m.label, action: m.action, source: 'routine' });
     }
   });
 
-  // Sort by time
   schedule.sort((a, b) => a.time.localeCompare(b.time));
-
-  // Filter to only show upcoming times (after current world time)
-  const [ch, cm] = (worldTime || '00:00').split(':').map(Number);
-  const currentMinutes = ch * 60 + cm;
-
-  return schedule.filter(s => {
-    const [sh, sm] = s.time.split(':').map(Number);
-    const schedMinutes = sh * 60 + sm;
-    return schedMinutes >= currentMinutes;
-  }).slice(0, 10); // Show max 10 upcoming items
+  const currentMinutes = parseMinutes(worldTime || '00:00');
+  return schedule.filter(s => parseMinutes(s.time) >= currentMinutes).slice(0, 10);
 }
 
-async function runTick(broadcast) {
+function startTask(item, state, absMinute) {
+  const location = item.location || 'path_center';
+  const pos = LOCATIONS[location] || LOCATIONS.path_center || { x: 0, z: 0 };
+  const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES));
+  return {
+    ...state,
+    current_action: item.action || 'idle',
+    active_task_label: item.label || item.action || 'Task',
+    active_task_source: item.source || 'routine',
+    task_started_at_abs: absMinute,
+    task_ends_at_abs: absMinute + duration,
+    position_x: pos.x,
+    position_y: 0,
+    position_z: pos.z,
+    energy: clamp((state.energy || 80) + actionEnergyDelta(item.action), 0, 100),
+    hunger: clamp((state.hunger || 20) + actionHungerDelta(item.action), 0, 100),
+    mood: item.action === 'sleeping' ? 'tired' : item.action === 'eating' ? 'content' : 'focused'
+  };
+}
+
+function startNightSleep(state, absMinute, currentMinute) {
+  const pos = LOCATIONS.bed || LOCATIONS.path_center || { x: 0, z: 0 };
+  return {
+    ...state,
+    current_action: 'sleeping',
+    active_task_label: 'Sleep',
+    active_task_source: 'routine',
+    task_started_at_abs: absMinute,
+    task_ends_at_abs: nextWakeAbs(absMinute, currentMinute),
+    position_x: pos.x,
+    position_y: 0,
+    position_z: pos.z,
+    energy: clamp((state.energy || 80) + 2, 0, 100),
+    hunger: clamp((state.hunger || 20) + 1, 0, 100),
+    mood: 'tired'
+  };
+}
+
+function idleState(state) {
+  return {
+    ...state,
+    current_action: 'idle',
+    active_task_label: null,
+    active_task_source: null,
+    task_started_at_abs: null,
+    task_ends_at_abs: null,
+    mood: state.mood || 'content'
+  };
+}
+
+function maybeUpdateWorldDrift(state, worldState, weather, absMinute) {
+  const last = Number(state.last_world_drift_abs || 0);
+  if (last && absMinute - last < WORLD_DRIFT_MINUTES) return { worldState, lastWorldDriftAbs: last };
+  return {
+    worldState: updateWorldStateForTick(worldState, { action: 'idle', target_location: 'path_center' }, weather),
+    lastWorldDriftAbs: absMinute
+  };
+}
+
+async function runMinutePulse(broadcast) {
   tickCount++;
-  console.log(`\n[Scheduler] ⏰ Tick #${tickCount} — ${new Date().toLocaleTimeString()}`);
 
   try {
-    const state    = getState();
-    const memories = getMemories(10);
+    const state = getState();
     const directives = getDirectives();
-    const newWorldTime = advanceWorldTime(state.world_time);
-    const weather  = generateWeather(tickCount);
+    const day = state.day || 1;
+    const worldTime = state.world_time || '06:00';
+    const minute = parseMinutes(worldTime);
+    const abs = absoluteMinute(day, worldTime);
+    const weather = generateWeather();
+    let worldState = readWorldState();
+    let nextState = { ...state, weather, day, world_time: worldTime };
+    let thought = null;
 
-    logWeather(weather, newWorldTime);
+    logWeather(weather, worldTime);
 
-    // Build upcoming schedule FIRST so we can pass it to Gemini
-    const upcomingSchedule = buildUpcomingSchedule(directives, newWorldTime, weather);
+    if (minute <= 1) firedKeys.clear();
 
-    // ── Check for Creator directives first ──────────────────────
-    let decision = null;
-    const directive = findDirectiveForTime(newWorldTime);
+    if (nextState.current_action !== 'idle' && !nextState.task_ends_at_abs) {
+      nextState = idleState(nextState);
+      thought = 'کار قبلی ام تمام شده؛ تا برنامه بعدی آرام می مانم.';
+    }
 
-    if (directive && !getFiredDirectiveIds().has(directive.id)) {
-      addFiredDirectiveId(directive.id);
-      console.log(`[Scheduler] 🎯 Creator directive matched: ${directive.label} @ ${newWorldTime}`);
+    if (nextState.current_action !== 'idle' && nextState.task_ends_at_abs && abs >= Number(nextState.task_ends_at_abs)) {
+      nextState = idleState(nextState);
+      thought = 'کارم تمام شد؛ تا کار بعدی کمی آرام می مانم.';
+    }
 
-      const pos = LOCATIONS[directive.location] || { x: state.position_x || 0, z: state.position_z || 0 };
-      decision = {
-        action: directive.action,
-        target_location: directive.location,
-        target_position: pos,
-        duration: 30,
-        energy_delta: directive.action === 'sleeping' ? 10 : directive.action === 'eating' ? 5 : -3,
-        hunger_delta: directive.action === 'eating' ? -15 : 2,
-        new_mood: 'content',
-        memory: `Creator commanded: ${directive.label} at ${newWorldTime}`,
-        thought: 'خالقم از من خواسته... اطاعت می‌کنم.'
-      };
+    if (isNightMinute(minute) && nextState.current_action !== 'sleeping') {
+      nextState = startNightSleep(nextState, abs, minute);
+      thought = 'وقت خواب شبانه است؛ تا صبح استراحت می کنم.';
+    }
 
-      if (!directive.recurring) {
-        removeDirective(directive.id);
-        console.log(`[Scheduler] 🗑️ One-time directive removed after execution`);
+    if (nextState.current_action === 'idle') {
+      const task = dueCreatorTask(directives, day, worldTime) || dueRoutineTask(day, worldTime);
+      if (task) {
+        firedKeys.add(taskKey(day, task));
+        nextState = startTask(task, nextState, abs);
+        worldState = updateWorldStateForTick(worldState, {
+          action: task.action,
+          target_location: task.location || 'path_center'
+        }, weather);
+        thought = task.source === 'creator'
+          ? 'زمان دستور خالق رسیده؛ انجامش می دهم.'
+          : `${task.label} رسیده؛ شروع می کنم.`;
+        addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.`);
+        if (task.source === 'creator' && !task.recurring && task.id) removeDirective(task.id);
       }
-    } else {
-      // Clear fired directives on new day so recurring ones can fire again
-      if (newWorldTime === '00:00' || newWorldTime === '00:30') {
-        clearFiredDirectiveIds();
-        console.log('[Scheduler] 🌅 New day — recurring directives reset');
-      }
-      decision = await askAI(state, memories, weather, newWorldTime, upcomingSchedule);
     }
 
-    const prevTime = state.world_time || '06:00';
-    const [prevH] = prevTime.split(':').map(Number);
-    const [newH]  = newWorldTime.split(':').map(Number);
-    // Crossed midnight: previous hour was late (>=22) and new hour is early (0 or 1)
-    const crossedMidnight = prevH >= 22 && newH <= 1;
-    const currentDay = state.day || 1;
-    const newDay = crossedMidnight ? currentDay + 1 : currentDay;
+    const drift = maybeUpdateWorldDrift(nextState, worldState, weather, abs);
+    worldState = drift.worldState;
+    nextState.last_world_drift_abs = drift.lastWorldDriftAbs;
+    saveState(nextState);
 
-    if (crossedMidnight) {
-      console.log(`[Scheduler] 🌅 New day! Day ${newDay} begins.`);
-    }
-
-    const newState = {
-      position_x: decision.target_position?.x ?? state.position_x ?? 0,
-      position_y: 0,
-      position_z: decision.target_position?.z ?? state.position_z ?? 0,
-      energy: clamp((state.energy || 80) + (decision.energy_delta || 0), 0, 100),
-      hunger: clamp((state.hunger || 20) + (decision.hunger_delta || 0), 0, 100),
-      current_action: decision.action || 'idle',
-      weather,
-      world_time: newWorldTime,
-      day: newDay,
-      mood: decision.new_mood || state.mood || 'content'
-    };
-
-    saveState(newState);
-    if (decision.memory) {
-      console.log(`[Scheduler] Memory logged: ${decision.memory}`);
-      addMemory(decision.memory);
-    }
-
-    // Build upcoming schedule to broadcast with state (already built above, just pass it down)
+    const upcomingSchedule = buildUpcomingSchedule(getDirectives(), worldTime, weather);
     const { OPENROUTER_API_KEY, SAMBANOVA_API_KEY } = require('./config');
     const hasAiKey =
       (OPENROUTER_API_KEY && OPENROUTER_API_KEY !== 'MISSING_KEY') ||
@@ -197,92 +249,29 @@ async function runTick(broadcast) {
     broadcast({
       type: 'state',
       data: {
-        ...newState,
-        thought: decision.thought,
+        ...nextState,
+        world_state: worldState,
+        thought,
         memories: getMemories(5),
         upcomingSchedule,
         apiKeyMissing: !hasAiKey
       }
     });
-
-    console.log(`[Scheduler] Broadcast sent. Action: ${newState.current_action} | Time: ${newWorldTime}`);
-    console.log(`[Scheduler] ✅ ${decision.action} | E:${newState.energy} H:${newState.hunger} | ${weather}`);
   } catch (err) {
-    console.error('[Scheduler] ❌ Error:', err.message);
+    console.error('[Scheduler] Minute pulse error:', err.message);
   }
 }
 
 function startScheduler(broadcast) {
-  // Read TICK_INTERVAL from .env (in minutes), default to 5 minutes to prevent 429 Rate Limits
-  const tickMinutes = parseInt(process.env.TICK_INTERVAL) || 5;
-  const intervalMs = tickMinutes * 60 * 1000; 
-  console.log(`[Scheduler] Intelligence: Every ${tickMinutes}m — World advances ${WORLD_MINUTES_PER_TICK} min per tick`);
+  console.log(`[Scheduler] World clock: 1 world day = ${WORLD_DAY_REAL_MINUTES} real minutes`);
+  console.log('[Scheduler] Minute pulse: every 2 real seconds = 1 world minute');
 
-  // Catch up persisted world time after deploy restarts or free-instance sleep.
-  catchUpSimulation(broadcast).catch(err => {
-    console.error('[Scheduler] Catch-up failed:', err.message);
-  });
-
-  // First tick after 5 seconds to reduce join wait time
-  setTimeout(() => runTick(broadcast), 5000);
-
-  // Use setInterval for sub-minute accuracy
-  setInterval(() => runTick(broadcast), intervalMs);
+  setTimeout(() => runMinutePulse(broadcast), WORLD_MINUTE_REAL_MS);
+  setInterval(() => runMinutePulse(broadcast), WORLD_MINUTE_REAL_MS);
 }
 
-async function catchUpSimulation(broadcast) {
-  console.log('[Scheduler] ⏳ Checking for time gaps to catch up...');
-  const state = getState();
-  const lastTime = state.timestamp ? new Date(state.timestamp).getTime() : Date.now();
-  const now = Date.now();
-  const elapsedMs = now - lastTime;
-  const elapsedMin = Math.floor(elapsedMs / 1000 / 60);
-
-  const tickMinutes = parseInt(process.env.TICK_INTERVAL) || 5;
-  let ticksToCatchUp = Math.floor(elapsedMin / tickMinutes);
-  if (ticksToCatchUp <= 0) {
-    console.log('[Scheduler] ✨ No catch-up needed.');
-    return;
-  }
-
-  // Cap at 48 ticks (1 day) to avoid massive processing
-  if (ticksToCatchUp > 48) {
-    console.log(`[Scheduler] ⚠️ Long gap detected (${elapsedMin} min). Capping catch-up to 48 ticks (1 day).`);
-    ticksToCatchUp = 48;
-  }
-
-  console.log(`[Scheduler] ⏩ Fast-forwarding ${ticksToCatchUp} ticks...`);
-
-  let currentState = state;
-  for (let i = 0; i < ticksToCatchUp; i++) {
-    const nextTime = advanceWorldTime(currentState.world_time);
-    const [hStr, mStr] = nextTime.split(':');
-    const hNum = parseInt(hStr) + (parseInt(mStr)/60);
-    
-    // Check midnight
-    const [prevH] = currentState.world_time.split(':').map(Number);
-    const [newH]  = nextTime.split(':').map(Number);
-    const crossedMidnight = prevH >= 22 && newH <= 1;
-    const newDay = crossedMidnight ? (currentState.day || 1) + 1 : (currentState.day || 1);
-
-    // Get fallback decision for speed (no AI calls during catch-up)
-    const fb = getFallbackAction(hNum, currentState.weather || 'sunny', currentState);
-    
-    currentState = {
-      ...currentState,
-      world_time: nextTime,
-      day: newDay,
-      energy: clamp((currentState.energy || 80) + (fb.action === 'sleeping' ? 10 : -3), 0, 100),
-      hunger: clamp((currentState.hunger || 20) + (fb.action === 'eating' ? -15 : 2), 0, 100),
-      current_action: fb.action,
-      position_x: fb.pos.x,
-      position_z: fb.pos.z,
-      timestamp: new Date(lastTime + (i + 1) * tickMinutes * 60 * 1000).toISOString()
-    };
-  }
-
-  saveState(currentState);
-  console.log(`[Scheduler] ✅ Catch-up complete. New Time: Day ${currentState.day}, ${currentState.world_time}`);
+async function catchUpSimulation() {
+  return getState();
 }
 
 module.exports = { startScheduler, buildUpcomingSchedule, catchUpSimulation };
