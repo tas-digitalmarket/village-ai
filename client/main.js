@@ -7,8 +7,10 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildWorld } from './world.js?v=7';
 import { buildWorldExpansion } from './world-expansion.js?v=2';
+import { buildAidaHomeInterior } from './aida-home-interior.js?v=1';
 import { Villager } from './character.js?v=7';
 import { AidaCharacter } from './ida-character.js?v=1';
+import { CharacterSpeechBubbles } from './speech-bubbles.js?v=1';
 import { WeatherFX } from './weather-fx.js?v=7';
 import { HUD } from './hud.js?v=7';
 import { CreatorPanel } from './creator.js?v=8';
@@ -120,14 +122,79 @@ composer.addPass(new OutputPass());
 
 buildWorld(scene);
 buildWorldExpansion(scene);
+buildAidaHomeInterior(scene);
 const villager = new Villager(scene);
 const aida = new AidaCharacter(scene);
+const speechBubbles = new CharacterSpeechBubbles(camera, renderer.domElement);
+speechBubbles.add('arash', villager.root, 'arash');
+speechBubbles.add('aida', aida.root, 'aida');
 const weatherFX = new WeatherFX(scene, camera);
 const hud = new HUD();
 window.hud = hud;
 const creator = new CreatorPanel((directives) => hud.updateSchedule(directives));
 
 let worldHour = 6;
+let latestDialogue = [];
+
+const socialDialogueEl = document.getElementById('arash-aida-dialogue');
+const socialPillEl = document.getElementById('arash-aida-pill');
+
+function speakerLabel(speaker) {
+  return speaker === 'aida' ? 'Aida' : 'Arash';
+}
+
+function normalizeDialogueLines(lines, state = {}) {
+  if (Array.isArray(lines) && lines.length) return lines.filter(line => line && line.text);
+
+  const aidaState = state.ida_state || {};
+  return [
+    {
+      speaker: 'arash',
+      text: state.thought || state.current_action || 'I am keeping an eye on the farm.'
+    },
+    {
+      speaker: 'aida',
+      text: aidaState.thought || aidaState.active_task_context || aidaState.active_task_label || 'I am settling into my homestead.'
+    }
+  ];
+}
+
+function updateSocialDialogue(lines, state = {}) {
+  const normalized = normalizeDialogueLines(lines, state).slice(-4);
+  latestDialogue = normalized;
+
+  if (socialDialogueEl) {
+    socialDialogueEl.replaceChildren();
+    normalized.forEach((line) => {
+      const row = document.createElement('div');
+      row.className = `dialogue-line dialogue-line--${line.speaker === 'aida' ? 'aida' : 'arash'}`;
+
+      const name = document.createElement('strong');
+      name.textContent = speakerLabel(line.speaker);
+
+      const text = document.createElement('span');
+      text.textContent = line.text;
+
+      row.append(name, text);
+      socialDialogueEl.append(row);
+    });
+  }
+
+  if (socialPillEl) {
+    const hasBoth = normalized.some(line => line.speaker === 'arash') && normalized.some(line => line.speaker === 'aida');
+    socialPillEl.textContent = hasBoth ? 'talking' : 'nearby';
+  }
+}
+
+function updateOverheadBubbles(state = {}) {
+  const lines = normalizeDialogueLines(state.social_dialogue || state.ida_state?.social_dialogue || latestDialogue, state);
+  const reversed = [...lines].reverse();
+  const arashLine = reversed.find(line => line.speaker !== 'aida');
+  const aidaLine = reversed.find(line => line.speaker === 'aida');
+
+  speechBubbles.setText('arash', arashLine?.text || state.thought || 'I am thinking about the farm.');
+  speechBubbles.setText('aida', aidaLine?.text || state.ida_state?.active_task_label || 'I am thinking about my homestead.');
+}
 
 const SKY_PRESETS = {
   night: { sky: 0x050d1e, fog: 0x0a0f1a, sun: 0.0, amb: 0.28, hemi: 0.22, moon: 0.80 },
@@ -207,6 +274,8 @@ function applyState(d) {
   if (d.ida_state) aida.setState(d.ida_state);
   if (d.weather) weatherFX.setWeather(d.weather);
   hud.update(d);
+  updateSocialDialogue(d.social_dialogue || d.ida_state?.social_dialogue, d);
+  updateOverheadBubbles(d);
 
   if (d.upcomingSchedule) {
     hud.updateSchedule(d.upcomingSchedule);
@@ -262,10 +331,14 @@ function connectWS() {
       const msg = JSON.parse(event.data);
       if (msg.type === 'state') applyState(msg.data);
       if (msg.type === 'directives') hud.updateSchedule(msg.data);
-      if (msg.type === 'creator_message') creator.onNewMessage(msg.data.arash_response);
+      if (msg.type === 'creator_message') {
+        creator.onNewMessage(msg.data.arash_response);
+        speechBubbles.setText('arash', msg.data.arash_response || 'I heard you.');
+      }
       if (msg.type === 'aida_message') {
         if (msg.data?.ida_state) aida.setState(msg.data.ida_state);
         creator.onNewAidaMessage(msg.data?.aida_response || '');
+        speechBubbles.setText('aida', msg.data?.aida_response || 'I heard you.');
       }
     } catch (e) { /* ignore */ }
   };
@@ -299,7 +372,37 @@ if (viewBtn) {
   };
 }
 
+function focusCameraOn(root, offset = new THREE.Vector3(13, 14, 13)) {
+  if (!root) return;
+  const target = new THREE.Vector3();
+  root.getWorldPosition(target);
+  target.y = 1.1;
+  camera.position.copy(target).add(offset);
+  controls.target.copy(target);
+  controls.maxDistance = 170;
+  controls.update();
+  isInterior = false;
+  if (viewBtn) viewBtn.innerHTML = '<span>🏠</span> View Inside';
+}
+
+document.getElementById('focus-arash')?.addEventListener('click', () => {
+  focusCameraOn(villager.root, new THREE.Vector3(12, 13, 12));
+});
+
+document.getElementById('focus-aida')?.addEventListener('click', () => {
+  focusCameraOn(aida.root, new THREE.Vector3(12, 13, 12));
+});
+
+document.getElementById('free-camera')?.addEventListener('click', () => {
+  isInterior = false;
+  controls.enablePan = true;
+  controls.maxDistance = 170;
+  if (viewBtn) viewBtn.innerHTML = '<span>🏠</span> View Inside';
+});
+
 updateSky(6);
+updateSocialDialogue([], {});
+updateOverheadBubbles({});
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -317,6 +420,7 @@ function animate() {
   controls.update();
   villager.update(delta, clock.getElapsedTime());
   aida.update(delta);
+  speechBubbles.update();
   weatherFX.update(delta, clock.getElapsedTime());
 
   worldHour += delta * (0.5 / (5 * 60));
