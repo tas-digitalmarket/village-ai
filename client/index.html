@@ -8,17 +8,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
   <link rel="stylesheet" href="world-state.css?v=3" />
   <script type="importmap">
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "./hud.js?v=7": "./hud.js?v=11",
-      "./hud.js?v=8": "./hud.js?v=11",
-      "./hud.js?v=9": "./hud.js?v=11",
-      "./hud.js?v=10": "./hud.js?v=11"
+      "./hud.js?v=7": "./hud.js?v=12",
+      "./hud.js?v=8": "./hud.js?v=12",
+      "./hud.js?v=9": "./hud.js?v=12",
+      "./hud.js?v=10": "./hud.js?v=12",
+      "./hud.js?v=11": "./hud.js?v=12"
     }
   }
   </script>
@@ -35,116 +36,52 @@
   <div id="hud">
     <aside id="dashboard" class="glass-panel dashboard-shell">
       <header class="dashboard-header">
-        <div>
+        <div class="dashboard-brand">
           <div class="dashboard-kicker">Village AI</div>
           <h1 class="dashboard-title">Arash Life Console</h1>
         </div>
-        <div class="dashboard-chip-row">
-          <span class="dashboard-chip" id="conn-status">● Reconnecting...</span>
-          <span class="dashboard-chip dashboard-chip--soft" id="stat-day">Day 1</span>
+        <div class="dashboard-header-tools">
+          <div class="dashboard-chip-row">
+            <span class="dashboard-chip" id="conn-status">● Reconnecting...</span>
+            <span class="dashboard-chip dashboard-chip--soft" id="stat-day">Day 1</span>
+          </div>
+          <button id="dashboard-toggle" class="mini-toggle dashboard-toggle" title="Minimize console">−</button>
         </div>
       </header>
 
-      <section class="dashboard-overview">
-        <div class="overview-grid">
-          <div class="overview-stat"><span>Time</span><strong id="stat-time">06:00:00</strong></div>
-          <div class="overview-stat"><span>Weather</span><strong id="stat-weather">sunny</strong></div>
-          <div class="overview-stat"><span>Mood</span><strong id="stat-mood">content</strong></div>
-        </div>
-        <div class="vitals-grid">
-          <div class="vital-card">
-            <div class="bar-header"><span>Energy</span><span id="energy-val">80%</span></div>
-            <div class="bar-container"><div class="bar-fill energy-bar" id="energy-bar"></div></div>
+      <div class="dashboard-body" id="dashboard-body">
+        <section class="dashboard-overview">
+          <div class="overview-grid">
+            <div class="overview-stat"><span>Time</span><strong id="stat-time">06:00:00</strong></div>
+            <div class="overview-stat"><span>Weather</span><strong id="stat-weather">sunny</strong></div>
+            <div class="overview-stat"><span>Mood</span><strong id="stat-mood">content</strong></div>
           </div>
-          <div class="vital-card">
-            <div class="bar-header"><span>Hunger</span><span id="hunger-val">20%</span></div>
-            <div class="bar-container"><div class="bar-fill hunger-bar" id="hunger-bar"></div></div>
+          <div class="vitals-grid">
+            <div class="vital-card"><div class="bar-header"><span>Energy</span><span id="energy-val">80%</span></div><div class="bar-container"><div class="bar-fill energy-bar" id="energy-bar"></div></div></div>
+            <div class="vital-card"><div class="bar-header"><span>Hunger</span><span id="hunger-val">20%</span></div><div class="bar-container"><div class="bar-fill hunger-bar" id="hunger-bar"></div></div></div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="dashboard-section dashboard-section--focus" id="intent-panel">
-        <div class="dashboard-section-head intent-head">
-          <span>Intent</span>
-          <div class="intent-tools">
-            <strong id="task-source-chip">steady</strong>
-            <button id="intent-toggle" class="mini-toggle" title="Minimize intent">−</button>
-          </div>
-        </div>
-        <div class="intent-body" id="intent-body">
-          <div class="intent-row">
-            <span class="intent-icon" id="task-icon">💤</span>
-            <div class="intent-copy">
-              <strong id="task-label">Resting</strong>
-              <span id="task-context">Waiting for the next meaningful action.</span>
-            </div>
-          </div>
-          <div class="insight-strip" id="thought-bubble"><span id="thought-text">Arash is observing the world.</span></div>
-        </div>
-      </section>
+        <section class="dashboard-section dashboard-section--focus" id="intent-panel">
+          <div class="dashboard-section-head intent-head"><span>Intent</span><div class="intent-tools"><strong id="task-source-chip">steady</strong><button id="intent-toggle" class="mini-toggle" title="Minimize intent">−</button></div></div>
+          <div class="intent-body" id="intent-body"><div class="intent-row"><span class="intent-icon" id="task-icon">💤</span><div class="intent-copy"><strong id="task-label">Resting</strong><span id="task-context">Waiting for the next meaningful action.</span></div></div><div class="insight-strip" id="thought-bubble"><span id="thought-text">Arash is observing the world.</span></div></div>
+        </section>
 
-      <section class="dashboard-section">
-        <div class="dashboard-section-head"><span>Today</span><strong id="risk-pill">stable</strong></div>
-        <div id="daily-goals-list" class="dashboard-list muted-empty">Loading daily plan...</div>
-      </section>
-
-      <section class="dashboard-section dashboard-split">
-        <div>
-          <div class="dashboard-section-head"><span>Risk & Needs</span></div>
-          <div id="risk-detail" class="dashboard-list muted-empty">No active risk.</div>
-        </div>
-        <div>
-          <div class="dashboard-section-head"><span>Skills</span></div>
-          <div id="skills-list" class="dashboard-list muted-empty">No growth yet.</div>
-        </div>
-      </section>
-
-      <section class="dashboard-section">
-        <div class="dashboard-section-head"><span>World Ledger</span></div>
-        <div id="world-state-list" class="world-state-list"><div class="world-empty">Loading world...</div></div>
-      </section>
-
-      <section class="dashboard-section dashboard-split">
-        <div>
-          <div class="dashboard-section-head"><span>Recent Memory</span></div>
-          <ul id="memory-list" class="dashboard-feed"></ul>
-        </div>
-        <div>
-          <div class="dashboard-section-head"><span>World Events</span></div>
-          <div id="events-list" class="dashboard-list muted-empty">No notable event yet.</div>
-        </div>
-      </section>
-
-      <section class="dashboard-section">
-        <div class="dashboard-section-head"><span>Schedule</span></div>
-        <div class="schedule-container"><ul id="schedule-list" class="schedule-list"><li class="schedule-empty">Loading today's schedule...</li></ul></div>
-      </section>
+        <section class="dashboard-section"><div class="dashboard-section-head"><span>Today</span><strong id="risk-pill">stable</strong></div><div id="daily-goals-list" class="dashboard-list muted-empty">Loading daily plan...</div></section>
+        <section class="dashboard-section dashboard-split"><div><div class="dashboard-section-head"><span>Risk & Needs</span></div><div id="risk-detail" class="dashboard-list muted-empty">No active risk.</div></div><div><div class="dashboard-section-head"><span>Skills</span></div><div id="skills-list" class="dashboard-list muted-empty">No growth yet.</div></div></section>
+        <section class="dashboard-section"><div class="dashboard-section-head"><span>World Ledger</span></div><div id="world-state-list" class="world-state-list"><div class="world-empty">Loading world...</div></div></section>
+        <section class="dashboard-section dashboard-split"><div><div class="dashboard-section-head"><span>Recent Memory</span></div><ul id="memory-list" class="dashboard-feed"></ul></div><div><div class="dashboard-section-head"><span>World Events</span></div><div id="events-list" class="dashboard-list muted-empty">No notable event yet.</div></div></section>
+        <section class="dashboard-section"><div class="dashboard-section-head"><span>Schedule</span></div><div class="schedule-container"><ul id="schedule-list" class="schedule-list"><li class="schedule-empty">Loading today's schedule...</li></ul></div></section>
+      </div>
     </aside>
 
-    <div id="hud-center">
-      <button id="view-toggle" class="view-inside-btn"><span>🏠</span> View Inside</button>
-    </div>
+    <div id="hud-center"><button id="view-toggle" class="view-inside-btn"><span>🏠</span> View Inside</button></div>
   </div>
 
   <div id="creator-toggle" class="glass-panel">💬</div>
-  <div id="creator-panel" class="glass-panel">
-    <div class="creator-header">
-      <h3>Creator Directives</h3>
-      <button id="creator-close">✕</button>
-    </div>
-    <div id="creator-messages">
-      <div class="creator-msg creator-msg--system">
-        <span class="msg-label">Connection Established</span>
-        <p class="msg-text">Greetings Creator. I am listening to your permanent instructions.</p>
-      </div>
-    </div>
-    <div class="creator-input-area">
-      <textarea id="creator-input" placeholder="Give Arash a command..."></textarea>
-      <button id="creator-send">Send</button>
-    </div>
-  </div>
+  <div id="creator-panel" class="glass-panel"><div class="creator-header"><h3>Creator Directives</h3><button id="creator-close">✕</button></div><div id="creator-messages"><div class="creator-msg creator-msg--system"><span class="msg-label">Connection Established</span><p class="msg-text">Greetings Creator. I am listening to your permanent instructions.</p></div></div><div class="creator-input-area"><textarea id="creator-input" placeholder="Give Arash a command..."></textarea><button id="creator-send">Send</button></div></div>
 
-  <script type="module" src="main.js?v=11"></script>
+  <script type="module" src="main.js?v=12"></script>
   <script type="module" src="clock-smooth.js?v=2"></script>
 </body>
 </html>
