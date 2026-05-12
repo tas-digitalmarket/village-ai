@@ -1,26 +1,26 @@
-// creator.js — Creator ↔ Arash chat panel
+// creator.js — Creator ↔ village chat panel
 export class CreatorPanel {
   constructor(onDirectivesUpdate) {
     this.onDirectivesUpdate = onDirectivesUpdate;
     this.isOpen = false;
     this._sendInProgress = false;
+    this.target = 'arash';
     this._buildPanel();
-    this._loadHistory();
+    this._setTarget('arash', false);
   }
 
   _buildPanel() {
-    // ── Main toggle button ─────────────────────────────────────
     this.$toggle = document.getElementById('creator-toggle');
-    if (this.$toggle) {
-      this.$toggle.addEventListener('click', () => this.togglePanel());
-    }
+    if (this.$toggle) this.$toggle.addEventListener('click', () => this.togglePanel());
 
-    // ── Panel container ────────────────────────────────────────
     this.$panel    = document.getElementById('creator-panel');
     this.$messages = document.getElementById('creator-messages');
     this.$input    = document.getElementById('creator-input');
     this.$send     = document.getElementById('creator-send');
     this.$closeBtn = document.getElementById('creator-close');
+    this.$title    = document.getElementById('creator-title');
+    this.$arashTab = document.getElementById('creator-target-arash');
+    this.$aidaTab  = document.getElementById('creator-target-aida');
 
     if (this.$send) {
       const handleSend = (e) => {
@@ -39,14 +39,30 @@ export class CreatorPanel {
         }
       });
     }
-    if (this.$closeBtn) {
-      this.$closeBtn.addEventListener('click', () => this.closePanel());
-    }
+    if (this.$closeBtn) this.$closeBtn.addEventListener('click', () => this.closePanel());
+    if (this.$arashTab) this.$arashTab.addEventListener('click', () => this._setTarget('arash'));
+    if (this.$aidaTab) this.$aidaTab.addEventListener('click', () => this._setTarget('aida'));
+  }
+
+  async _setTarget(target, reload = true) {
+    this.target = target === 'aida' ? 'aida' : 'arash';
+    this.$arashTab?.classList.toggle('active', this.target === 'arash');
+    this.$aidaTab?.classList.toggle('active', this.target === 'aida');
+    if (this.$title) this.$title.textContent = this.target === 'aida' ? 'Creator Conversation' : 'Creator Directives';
+    if (this.$input) this.$input.placeholder = this.target === 'aida' ? 'Speak with Aida...' : 'Give Arash a command...';
+    if (reload) await this._loadHistory();
+    else await this._loadHistory();
   }
 
   async _loadHistory() {
+    if (!this.$messages) return;
+    this.$messages.innerHTML = '';
+    this._addMessage('system', this.target === 'aida'
+      ? 'Aida is listening with care.'
+      : 'Arash is listening to your permanent instructions.', false);
     try {
-      const res = await fetch('/api/creator-messages');
+      const endpoint = this.target === 'aida' ? '/api/aida-messages' : '/api/creator-messages';
+      const res = await fetch(endpoint);
       if (!res.ok) return;
       const messages = await res.json();
       messages.forEach(m => this._addMessage(m.role, m.content, false));
@@ -65,12 +81,11 @@ export class CreatorPanel {
     this.$input.disabled = true;
     this.$send.disabled = true;
     this.$send.textContent = '...';
-
-    // Show creator message immediately
     this._addMessage('creator', text, true);
 
     try {
-      const res = await fetch('/api/directive', {
+      const endpoint = this.target === 'aida' ? '/api/aida-message' : '/api/directive';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text })
@@ -79,16 +94,12 @@ export class CreatorPanel {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      // Arash response is handled by the WebSocket broadcast (creator_message event)
-      // to ensure all connected clients see it without duplication here.
-
-      // Notify about new directives
-      if (data.directives && data.directives.length > 0 && this.onDirectivesUpdate) {
+      if (this.target === 'arash' && data.directives && data.directives.length > 0 && this.onDirectivesUpdate) {
         this.onDirectivesUpdate(data.directives);
         this._showDirectiveConfirm(data.directives);
       }
     } catch (e) {
-      this._addMessage('system', 'Failed to reach the creator channel. Try again.', true);
+      this._addMessage('system', 'The village channel did not answer. Try again.', true);
       console.error('[Creator] Send failed:', e.message);
     } finally {
       this.$input.disabled = false;
@@ -100,14 +111,17 @@ export class CreatorPanel {
   }
 
   _addMessage(role, content, animate = false) {
-    if (!this.$messages) return;
-
+    if (!this.$messages || !content) return;
     const div = document.createElement('div');
     div.className = `creator-msg creator-msg--${role}${animate ? ' creator-msg--new' : ''}`;
-
-    const label = role === 'creator' ? '👁️ Creator' : role === 'arash' ? '🧑‍🌾 Arash' : '⚙️ System';
+    const label = role === 'creator'
+      ? 'Creator'
+      : role === 'arash'
+        ? 'Arash'
+        : role === 'aida'
+          ? 'Aida'
+          : 'System';
     div.innerHTML = `<span class="msg-label">${label}</span><p class="msg-text">${this._escapeHtml(content)}</p>`;
-
     this.$messages.appendChild(div);
     this._scrollToBottom();
   }
@@ -117,15 +131,13 @@ export class CreatorPanel {
     const labels = directives.map(d => `• ${d.label} @ ${d.time}${d.recurring ? ' (daily)' : ''}`).join('\n');
     const div = document.createElement('div');
     div.className = 'creator-msg creator-msg--system creator-msg--new';
-    div.innerHTML = `<span class="msg-label">📅 Schedule Updated</span><p class="msg-text">${count} directive(s) scheduled:\n${this._escapeHtml(labels)}</p>`;
+    div.innerHTML = `<span class="msg-label">Schedule Updated</span><p class="msg-text">${count} directive(s) scheduled:\n${this._escapeHtml(labels)}</p>`;
     this.$messages.appendChild(div);
     this._scrollToBottom();
   }
 
   _scrollToBottom() {
-    if (this.$messages) {
-      this.$messages.scrollTop = this.$messages.scrollHeight;
-    }
+    if (this.$messages) this.$messages.scrollTop = this.$messages.scrollHeight;
   }
 
   _escapeHtml(text) {
@@ -136,9 +148,12 @@ export class CreatorPanel {
       .replace(/\n/g, '<br>');
   }
 
-  // Called from WebSocket when a new message arrives
   onNewMessage(arashResponse) {
-    this._addMessage('arash', arashResponse, true);
+    if (this.target === 'arash') this._addMessage('arash', arashResponse, true);
+  }
+
+  onNewAidaMessage(aidaResponse) {
+    if (this.target === 'aida') this._addMessage('aida', aidaResponse, true);
   }
 
   togglePanel() {
