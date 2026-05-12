@@ -1,14 +1,19 @@
 const ACTION_ICONS = {
   idle: '☕', walking: '🚶', chopping_wood: '🪓', watering_crops: '💧', harvesting: '🌾', eating: '🍞',
   sleeping: '😴', running_to_shelter: '🏃', sitting: '🧘', praying: '🙏', fishing: '🎣',
-  tending_animals: '🐄', checking_motorcycle: '🏍️', wandering: '🌿', tending_crops: '🌱'
+  tending_animals: '🐄', checking_motorcycle: '🏍️', wandering: '🌿', tending_crops: '🌱',
+  morning_garden: '🌱', checking_herbs: '🌿', village_errand: '🧺', resting: '🧘', animal_care: '🐐',
+  neighbor_walk: '🚶', evening_prayer: '🙏', watering_garden: '💧'
 };
 
 const ACTION_LABELS = {
   idle: 'Free Time', walking: 'Walking', chopping_wood: 'Chopping Wood', watering_crops: 'Watering Crops',
   harvesting: 'Harvesting', eating: 'Eating', sleeping: 'Sleeping', running_to_shelter: 'Running to Shelter',
   sitting: 'Resting', praying: 'Praying', fishing: 'Fishing', tending_animals: 'Tending Animals',
-  checking_motorcycle: 'Checking Motorcycle', wandering: 'Wandering the Farm', tending_crops: 'Tending Crops'
+  checking_motorcycle: 'Checking Motorcycle', wandering: 'Wandering the Farm', tending_crops: 'Tending Crops',
+  morning_garden: 'Morning Garden Care', checking_herbs: 'Checking Herbs', village_errand: 'Village Errand',
+  resting: 'Quiet Rest', animal_care: 'Animal Care', neighbor_walk: 'Neighbor Walk', evening_prayer: 'Evening Prayer',
+  watering_garden: 'Watering Garden'
 };
 
 const WEATHER_ICONS = { sunny: '☀️', cloudy: '⛅', rainy: '🌧️', foggy: '🌫️', windy: '💨', stormy: '⛈️' };
@@ -53,6 +58,8 @@ export class HUD {
     this.$taskSource = document.getElementById('task-source-chip');
     this.$thought = document.getElementById('thought-bubble');
     this.$thoughtText = document.getElementById('thought-text');
+    this.$aidaCard = document.getElementById('aida-life-card');
+    this.$aidaPill = document.getElementById('aida-status-pill');
     this.$goals = document.getElementById('daily-goals-list');
     this.$riskPill = document.getElementById('risk-pill');
     this.$riskDetail = document.getElementById('risk-detail');
@@ -118,6 +125,8 @@ export class HUD {
     if (this.$thoughtText) this.$thoughtText.textContent = data.thought || 'Arash is observing the world.';
     if (this.$thought) this.$thought.classList.toggle('is-live', Boolean(data.thought));
 
+    this.updateAida(data.ida_state);
+
     const goals = data.daily_plan?.goals || [];
     setHtml(this.$goals, goals.length ? goals.slice(0, 5).map(goalMarkup).join('') : '<div class="muted-empty">Daily goals will appear here.</div>');
     const risk = data.risk_state || {};
@@ -134,6 +143,36 @@ export class HUD {
     }
     const events = data.world_events || [];
     setHtml(this.$events, events.length ? events.slice(0, 4).map(eventMarkup).join('') : '<div class="muted-empty">No notable event yet.</div>');
+  }
+
+  updateAida(aida = {}) {
+    if (!this.$aidaCard) return;
+    if (!aida || !aida.name) {
+      this.$aidaCard.textContent = 'Waiting for Aida...';
+      if (this.$aidaPill) this.$aidaPill.textContent = 'offline';
+      return;
+    }
+
+    const action = aida.active_task_label || ACTION_LABELS[aida.current_action] || aida.current_action || 'Settling in';
+    const mood = aida.mood || 'curious';
+    const relation = pct(aida.relationship_arash ?? 0);
+    const energy = pct(aida.energy ?? 0);
+    const hunger = pct(aida.hunger ?? 0);
+    const icon = ACTION_ICONS[aida.current_action] || '🌿';
+    const position = `${Number(aida.position_x ?? 0).toFixed(1)}, ${Number(aida.position_z ?? 0).toFixed(1)}`;
+
+    if (this.$aidaPill) this.$aidaPill.textContent = mood;
+    this.$aidaCard.innerHTML = `
+      <div class="villager-life-head">
+        <span class="villager-avatar">${icon}</span>
+        <div><strong>${esc(aida.name || 'Aida')}</strong><span>${esc(aida.role || 'villager')}</span></div>
+      </div>
+      <div class="villager-life-action"><strong>${esc(action)}</strong><span>${esc(aida.home_label || 'village homestead')} · ${esc(position)}</span></div>
+      <div class="villager-life-grid">
+        ${createMeter('Energy', energy, energy < 30 ? 'warn' : 'primary')}
+        ${createMeter('Hunger', hunger, hunger > 70 ? 'warn' : 'primary')}
+        ${createMeter('Arash Bond', relation, relation > 55 ? 'ready' : 'primary')}
+      </div>`;
   }
 
   updateWorld(world) {
