@@ -39,7 +39,7 @@
         <div class="panel-body">
           <div class="stat-group">
             <div class="stat-item"><span class="stat-label">Day:</span><span class="stat-value" id="stat-day">1</span></div>
-            <div class="stat-item"><span class="stat-label">Time:</span><span class="stat-value" id="stat-time">06:00</span></div>
+            <div class="stat-item"><span class="stat-label">Time:</span><span class="stat-value" id="stat-time">06:00:00</span></div>
             <div class="stat-item"><span class="stat-label">Weather:</span><span class="stat-value" id="stat-weather">sunny</span></div>
           </div>
           <div class="stat-group">
@@ -124,7 +124,7 @@
   <script type="module" src="main.js?v=8"></script>
   <script>
     (function syncExactWorldClock() {
-      const rate = 1440 / (48 * 60 * 1000);
+      const worldSecondsPerRealMs = 60 / 2000;
       let base = null;
       function minutesOf(t) {
         const parts = String(t || '06:00').split(':').map(Number);
@@ -132,13 +132,17 @@
       }
       function current() {
         if (!base) return null;
-        const add = Math.max(0, Math.floor((Date.now() - base.ts) * rate));
-        const total = base.min + add;
-        const day = base.day + Math.floor(total / 1440);
-        const dayMin = ((total % 1440) + 1440) % 1440;
-        const h = Math.floor(dayMin / 60);
-        const m = dayMin % 60;
-        return { day, h, text: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` };
+        const addedSeconds = Math.max(0, Math.floor((Date.now() - base.ts) * worldSecondsPerRealMs));
+        const totalSeconds = base.seconds + addedSeconds;
+        const day = base.day + Math.floor(totalSeconds / 86400);
+        const daySeconds = ((totalSeconds % 86400) + 86400) % 86400;
+        const h = Math.floor(daySeconds / 3600);
+        const m = Math.floor((daySeconds % 3600) / 60);
+        const s = daySeconds % 60;
+        return {
+          day,
+          text: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+        };
       }
       function paint() {
         const c = current();
@@ -157,13 +161,13 @@
           const state = await res.json();
           base = {
             day: Number(state.day) || 1,
-            min: minutesOf(state.world_time),
+            seconds: minutesOf(state.world_time) * 60,
             ts: state.timestamp ? new Date(state.timestamp).getTime() : Date.now()
           };
         } catch (e) {}
       }
       sync();
-      setInterval(sync, 5000);
+      setInterval(sync, 10000);
       requestAnimationFrame(paint);
     })();
   </script>
