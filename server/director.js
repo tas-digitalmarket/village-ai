@@ -4,20 +4,19 @@ const {
   PRIMARY_MODEL,
   FALLBACK_MODEL,
   SAMBANOVA_PRIMARY_MODEL,
-  SAMBANOVA_FALLBACK_MODEL,
-  GEMINI_API_KEY,
-  GEMINI_MODEL
+  SAMBANOVA_FALLBACK_MODEL
 } = require('./config');
 
 const VALID_ACTIONS = [
   'idle', 'walking', 'chopping_wood', 'watering_crops', 'harvesting',
-  'eating', 'sleeping', 'sitting', 'fishing', 'tending_animals',
-  'checking_motorcycle', 'wandering', 'tending_crops'
+  'eating', 'sleeping', 'running_to_shelter', 'sitting', 'fishing',
+  'tending_animals', 'checking_motorcycle', 'wandering', 'tending_crops'
 ];
 
 const VALID_LOCATIONS = [
   'home', 'bed', 'table', 'east_field', 'west_field', 'well',
-  'wood_stump', 'haystack', 'path_center', 'fishing_spot', 'motorcycle'
+  'wood_stump', 'haystack', 'path_center', 'fishing_spot', 'motorcycle',
+  'fence_north'
 ];
 
 const PROVIDERS = [
@@ -37,13 +36,6 @@ const PROVIDERS = [
     endpoint: 'https://api.sambanova.ai/v1/chat/completions',
     models: [SAMBANOVA_PRIMARY_MODEL, SAMBANOVA_FALLBACK_MODEL],
     headers: {}
-  },
-  {
-    name: 'Gemini',
-    type: 'gemini',
-    key: GEMINI_API_KEY,
-    models: [GEMINI_MODEL],
-    headers: {}
   }
 ].filter(p => p.key && p.key !== 'MISSING_KEY');
 
@@ -61,18 +53,29 @@ function isConversationOnly(message) {
 
 function buildLocalConversation(message, state = {}) {
   const clean = String(message || '').trim();
+  const time = state.world_time || '06:00';
+  const mood = state.mood || 'آرام';
   const short = clean.length > 80 ? `${clean.slice(0, 77)}...` : clean;
-  const response = clean
-    ? 'من آرشم؛ کشاورز همین مزرعه. حرفت را می‌شنوم و سعی می‌کنم از جای خودم، ساده و طبیعی جواب بدهم.'
-    : 'من اینجا هستم، خالقم. حرفت را بگو تا از نگاه خودم جواب بدهم.';
+
+  let response;
+  if (/سلام|درود|hello|hi/i.test(clean)) {
+    response = `سلام خالقم. صدایت را می‌شنوم؛ الان ساعت ${time} است و با حواسی جمع کنار مزرعه می‌مانم.`;
+  } else if (/چطوری|حالت|خوبی|how are/i.test(clean)) {
+    response = `حالم ${mood} است. کمی به هوا و کارهای امروز نگاه می‌کنم و سعی می‌کنم تصمیم بعدی را عاقلانه بگیرم.`;
+  } else if (/هوشمند|فکر|باهوش|تصمیم/i.test(clean)) {
+    response = 'می‌فهمم. از این به بعد فقط تکرار نمی‌کنم؛ زمان، هوا، گرسنگی، انرژی و خاطره‌های تازه را با هم می‌سنجم.';
+  } else {
+    response = `شنیدم خالقم: «${short}». آن را به خاطر می‌سپارم و در تصمیم‌های بعدی حسابش می‌کنم.`;
+  }
 
   return {
     arash_response: response,
-    memory: `Creator talked with Arash: ${short}`,
+    memory: `Creator told Arash: ${short}`,
     directives: [],
     immediate_action: null
   };
 }
+
 function extractJSON(text) {
   let stripped = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, block =>
@@ -106,8 +109,8 @@ function normalizeDirectiveResult(parsed, message) {
     };
   }
 
-  let response = parsed.arash_response || buildLocalConversation(message).arash_response;
-  if (!/[\u0600-\u06FF]/.test(response) || /شنیدم.*به خاطر می‌سپارم/.test(response)) {
+  let response = parsed.arash_response || `شنیدم خالقم. پیام «${message.slice(0, 60)}» را به خاطر می‌سپارم.`;
+  if (!/[\u0600-\u06FF]/.test(response)) {
     response = buildLocalConversation(message).arash_response;
   }
 
@@ -119,33 +122,7 @@ function normalizeDirectiveResult(parsed, message) {
   };
 }
 
-function messagesToText(messages) {
-  return messages.map(m => m.role.toUpperCase() + ':\n' + m.content).join('\n\n');
-}
-
 async function callProvider(provider, model, messages) {
-  if (provider.type === 'gemini') {
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(provider.key), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: messagesToText(messages) }] }],
-        generationConfig: {
-          temperature: 0.65,
-          topP: 0.9,
-          maxOutputTokens: 800
-        }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-    }
-
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
-  }
-
   const response = await fetch(provider.endpoint, {
     method: 'POST',
     headers: {
@@ -156,8 +133,8 @@ async function callProvider(provider, model, messages) {
     body: JSON.stringify({
       model,
       messages,
-      temperature: 0.65,
-      top_p: 0.9,
+      temperature: 0.2,
+      top_p: 0.8,
       max_tokens: 800
     })
   });
@@ -169,67 +146,10 @@ async function callProvider(provider, model, messages) {
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
 }
-function cleanConversationText(text) {
-  return String(text || '')
-    .replace(/<think>[\s\S]*?<\/think>/g, '')
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
-    .replace(/(می‌کشم،\s*){2,}/g, '')
-    .trim()
-    .slice(0, 700);
-}
-
-async function processConversation(message, state, memories) {
-  const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'خاطره تازه‌ای نیست.';
-  const systemPrompt = `تو آرش هستی؛ از نگاه خودت یک انسان عادی، یک کشاورز روستایی که در همین مزرعه زندگی می‌کند.
-Creator همان کسی است که با تو حرف می‌زند و می‌تواند مسیر زندگی و کارهایت را جهت بدهد.
-پاسخ تو باید طبیعی، کوتاه، فارسی، اول‌شخص، و مخصوص همین پیام باشد؛ مثل یک آدم معمولی جواب بده، نه مثل گزارش سیستم.
-بدون ایموجی، بدون جمله‌های عجیب، بدون تکرار کلمه‌ها و بدون اغراق جواب بده.
-جمله‌های قالبی مثل «شنیدم و به خاطر می‌سپارم» را تکرار نکن.
-درصد انرژی، گرسنگی، زمان، mood یا نام action را در جواب نیاور مگر خود Creator دقیقاً درباره وضعیت، انرژی، گرسنگی، زمان یا کارت پرسیده باشد.
-اگر سؤال شخصی، احوال‌پرسی، هویتی، یا سؤال درباره زندگی/مزرعه است، از هویت و تجربه خودت به عنوان آرشِ کشاورز جواب بده.
-اگر پیام مبهم است، از نگاه آرش یک پاسخ انسانی و کوتاه بده.
-
-وضعیت فعلی:
-- زمان: ${state.world_time || '06:00'}
-- حال‌وهوا: ${state.mood || 'content'}
-- کار فعلی: ${state.current_action || 'idle'}
-- انرژی: ${state.energy ?? 'نامشخص'}
-- گرسنگی: ${state.hunger ?? 'نامشخص'}
-
-خاطرات اخیر:
-${memText}`;
-
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: message }
-  ];
-
-  for (const provider of PROVIDERS) {
-    for (const model of provider.models.filter(Boolean)) {
-      try {
-        const text = cleanConversationText(await callProvider(provider, model, messages));
-        if (text && /[آ-ی]/.test(text) && !/Yes,\s*my Creator/i.test(text) && !/شنیدم.*به خاطر می‌سپارم/.test(text)) {
-          return {
-            arash_response: text,
-            memory: `Creator talked with Arash: ${message.slice(0, 80)}`,
-            directives: [],
-            immediate_action: null
-          };
-        }
-      } catch (err) {
-        console.error(`[Director:${provider.name}] conversation ${model} failed:`, String(err.message || err).slice(0, 180));
-        if (String(err.message || err).includes('HTTP 429')) await sleep(1500);
-      }
-    }
-  }
-
-  return buildLocalConversation(message, state);
-}
 
 async function processDirective(message, state, memories) {
   if (isConversationOnly(message)) {
-    return processConversation(message, state, memories);
+    return buildLocalConversation(message, state);
   }
 
   const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'هنوز خاطره مهمی ثبت نشده است.';
