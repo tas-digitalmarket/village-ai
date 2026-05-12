@@ -6,6 +6,8 @@ const {
   SAMBANOVA_PRIMARY_MODEL,
   SAMBANOVA_FALLBACK_MODEL
 } = require('./config');
+const { readWorldState } = require('./world-state');
+const { buildBrainSnapshot, buildBrainSystemPrompt, buildConversationFallback } = require('./brain');
 
 const VALID_ACTIONS = [
   'idle', 'walking', 'chopping_wood', 'watering_crops', 'harvesting',
@@ -51,31 +53,6 @@ function isConversationOnly(message) {
   return !commandHints.some(hint => text.includes(hint));
 }
 
-function buildLocalConversation(message, state = {}) {
-  const clean = String(message || '').trim();
-  const time = state.world_time || '06:00';
-  const mood = state.mood || 'آرام';
-  const short = clean.length > 80 ? `${clean.slice(0, 77)}...` : clean;
-
-  let response;
-  if (/سلام|درود|hello|hi/i.test(clean)) {
-    response = `سلام خالقم. صدایت را می‌شنوم؛ الان ساعت ${time} است و با حواسی جمع کنار مزرعه می‌مانم.`;
-  } else if (/چطوری|حالت|خوبی|how are/i.test(clean)) {
-    response = `حالم ${mood} است. کمی به هوا و کارهای امروز نگاه می‌کنم و سعی می‌کنم تصمیم بعدی را عاقلانه بگیرم.`;
-  } else if (/هوشمند|فکر|باهوش|تصمیم/i.test(clean)) {
-    response = 'می‌فهمم. از این به بعد فقط تکرار نمی‌کنم؛ زمان، هوا، گرسنگی، انرژی و خاطره‌های تازه را با هم می‌سنجم.';
-  } else {
-    response = `شنیدم خالقم: «${short}». آن را به خاطر می‌سپارم و در تصمیم‌های بعدی حسابش می‌کنم.`;
-  }
-
-  return {
-    arash_response: response,
-    memory: `Creator told Arash: ${short}`,
-    directives: [],
-    immediate_action: null
-  };
-}
-
 function extractJSON(text) {
   let stripped = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   stripped = stripped.replace(/```(?:json)?[\s\S]*?```/g, block =>
@@ -87,7 +64,7 @@ function extractJSON(text) {
   return JSON.parse(match[0]);
 }
 
-function normalizeDirectiveResult(parsed, message) {
+function normalizeDirectiveResult(parsed, message, state, memories, worldState) {
   const directives = Array.isArray(parsed.directives)
     ? parsed.directives
       .filter(d => d && VALID_ACTIONS.includes(d.action) && VALID_LOCATIONS.includes(d.location) && /^\d{2}:\d{2}$/.test(d.time || ''))
@@ -105,24 +82,24 @@ function normalizeDirectiveResult(parsed, message) {
     immediate = {
       action: parsed.immediate_action.action,
       location: parsed.immediate_action.location,
-      thought: parsed.immediate_action.thought || 'خالق از من خواسته همین حالا کاری انجام بدهم؛ پس انجامش می‌دهم.'
+      thought: parsed.immediate_action.thought || 'خالق از من خواسته همین حالا کاری انجام بدهم؛ انجامش می دهم.'
     };
   }
 
-  let response = parsed.arash_response || `شنیدم خالقم. پیام «${message.slice(0, 60)}» را به خاطر می‌سپارم.`;
-  if (!/[\u0600-\u06FF]/.test(response)) {
-    response = buildLocalConversation(message).arash_response;
+  let response = String(parsed.arash_response || '').trim();
+  if (!response || !/[\u0600-\u06FF]/.test(response)) {
+    response = buildConversationFallback(message, state, memories, worldState);
   }
 
   return {
     arash_response: response,
-    memory: parsed.memory || `Creator command: ${message.slice(0, 80)}`,
+    memory: parsed.memory || `Creator told Arash: ${message.slice(0, 100)}`,
     directives,
     immediate_action: immediate
   };
 }
 
-async function callProvider(provider, model, messages) {
+async function callProvider(provider, model, messages, temperature = 0.25) {
   const response = await fetch(provider.endpoint, {
     method: 'POST',
     headers: {
@@ -133,9 +110,9 @@ async function callProvider(provider, model, messages) {
     body: JSON.stringify({
       model,
       messages,
-      temperature: 0.2,
+      temperature,
       top_p: 0.8,
-      max_tokens: 800
+      max_tokens: 850
     })
   });
 
@@ -148,44 +125,68 @@ async function callProvider(provider, model, messages) {
 }
 
 async function processDirective(message, state, memories) {
+  const worldState = readWorldState();
+  const brain = buildBrainSnapshot(state, memories, worldState);
+
   if (isConversationOnly(message)) {
-    return buildLocalConversation(message, state);
+    const systemPrompt = `${buildBrainSystemPrompt(brain, 'conversation')}
+
+You are answering the Creator directly.
+Return only valid JSON with this exact shape:
+{
+  "arash_response": "A natural Persian answer from Arash, one or two short sentences.",
+  "memory": "A concise memory of what the Creator said.",
+  "directives": [],
+  "immediate_action": null
+}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Creator says: ${message}` }
+    ];
+
+    for (const provider of PROVIDERS) {
+      for (const model of provider.models.filter(Boolean)) {
+        try {
+          const text = await callProvider(provider, model, messages, 0.45);
+          return normalizeDirectiveResult(extractJSON(text), message, state, memories, worldState);
+        } catch (err) {
+          console.error(`[Director:${provider.name}] conversation ${model} failed:`, String(err.message || err).slice(0, 180));
+          if (String(err.message || '').includes('HTTP 429')) await sleep(1500);
+        }
+      }
+    }
+
+    return {
+      arash_response: buildConversationFallback(message, state, memories, worldState),
+      memory: `Creator talked with Arash: ${message.slice(0, 100)}`,
+      directives: [],
+      immediate_action: null
+    };
   }
 
-  const memText = memories.slice(0, 5).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'هنوز خاطره مهمی ثبت نشده است.';
+  const systemPrompt = `${buildBrainSystemPrompt(brain, 'conversation')}
 
-  const systemPrompt = `تو آرش هستی؛ یک روستایی خودمختار، آرام و وظیفه‌شناس.
-Creator مستقیم با تو حرف زده است. باید پیام او را بفهمی، محترمانه جواب بدهی، و اگر دستور زمان‌دار یا فوری دارد آن را به ساختار قابل اجرا تبدیل کنی.
+The Creator may be giving Arash a scheduled or immediate command.
+Rules:
+- If the message has a specific time, put it inside directives.
+- If it says daily, every day, هر روز, روزانه, هر شب, or هر صبح, set recurring to true.
+- If it says now, right now, الان, همین الان, فوری, or همین حالا, create immediate_action.
+- If it is only conversation, keep directives empty.
+- arash_response must sound like Arash speaking naturally as a human farmer.
+- Do not mention percentages or internal state unless the Creator asked for them.
+- Return only raw JSON; no markdown.
 
-پیام Creator:
-"${message}"
-
-وضعیت فعلی:
-- زمان: ${state.world_time || '06:00'}
-- کار فعلی: ${state.current_action || 'idle'}
-- حال‌وهوا: ${state.mood || 'content'}
-
-خاطرات اخیر:
-${memText}
-
-قواعد:
-- اگر پیام زمان مشخص دارد، آن را داخل directives بگذار.
-- اگر پیام شامل daily، every day، هر روز، روزانه، هر شب یا هر صبح بود recurring را true کن.
-- اگر پیام شامل now، right now، الان، همین الان، فوری یا همین حالا بود immediate_action بساز.
-- اگر پیام فقط گفتگو بود و دستور اجرایی نداشت، directives خالی باشد.
-- پاسخ arash_response باید دو خط داشته باشد: خط اول انگلیسی، خط دوم فارسی.
-- فقط JSON خام بده؛ markdown یا توضیح اضافه ننویس.
-
-اکشن‌های معتبر:
+Valid actions:
 ${VALID_ACTIONS.join(', ')}
 
-لوکیشن‌های معتبر:
+Valid locations:
 ${VALID_LOCATIONS.join(', ')}
 
-فرمت:
+JSON shape:
 {
-  "arash_response": "Yes, my Creator. I will water the east field every morning at 09:00.\\nبله خالقم، هر صبح ساعت ۰۹:۰۰ مزرعه شرقی را آبیاری می‌کنم.",
-  "memory": "Creator asked Arash to water the east field every morning.",
+  "arash_response": "Persian answer from Arash.",
+  "memory": "Creator asked Arash to...",
   "directives": [
     {"time":"09:00","action":"watering_crops","location":"east_field","recurring":true,"label":"Water the east field"}
   ],
@@ -194,15 +195,15 @@ ${VALID_LOCATIONS.join(', ')}
 
   const messages = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: 'پیام Creator را تحلیل کن و فقط JSON معتبر بده.' }
+    { role: 'user', content: `Creator says: ${message}` }
   ];
 
   for (const provider of PROVIDERS) {
     for (const model of provider.models.filter(Boolean)) {
       try {
         const text = await callProvider(provider, model, messages);
-        const parsed = normalizeDirectiveResult(extractJSON(text), message);
-        console.log(`[Director:${provider.name}:${model}] directive parse ok`);
+        const parsed = normalizeDirectiveResult(extractJSON(text), message, state, memories, worldState);
+        console.log(`[Director:${provider.name}:${model}] creator message parsed`);
         return parsed;
       } catch (err) {
         const msg = err.message || String(err);
@@ -212,7 +213,12 @@ ${VALID_LOCATIONS.join(', ')}
     }
   }
 
-  return buildLocalConversation(message, state);
+  return {
+    arash_response: buildConversationFallback(message, state, memories, worldState),
+    memory: `Creator talked with Arash: ${message.slice(0, 100)}`,
+    directives: [],
+    immediate_action: null
+  };
 }
 
 module.exports = { processDirective };
