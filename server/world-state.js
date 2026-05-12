@@ -16,6 +16,7 @@ const DEFAULT_WORLD_STATE = {
   house: { condition: 92, cleanliness: 70 },
   motorcycle: { condition: 68, fuel: 45 },
   animals: { hunger: 38, health: 88, produce: 0 },
+  alerts: [],
   updated_at: new Date().toISOString()
 };
 
@@ -63,6 +64,7 @@ function normalizeWorldState(input = {}) {
       health: clamp(input.animals?.health ?? DEFAULT_WORLD_STATE.animals.health),
       produce: Math.max(0, Math.round(Number(input.animals?.produce ?? DEFAULT_WORLD_STATE.animals.produce)))
     },
+    alerts: Array.isArray(input.alerts) ? input.alerts.slice(-8) : [],
     updated_at: input.updated_at || new Date().toISOString()
   };
 }
@@ -111,12 +113,27 @@ function driftField(field, weather) {
   else moisture -= 3;
 
   if (moisture > 35 && health > 45) growth += moisture > 65 ? 3 : 2;
-  else if (moisture > 20) growth += 1;
+  else if (moisture > 20 && health > 35) growth += 1;
 
-  if (moisture < 18) health -= 4;
+  if (moisture < 12) health -= 6;
+  else if (moisture < 22) health -= 3;
   else if (moisture > 45 && health < 95) health += 1;
 
+  if (growth > 92 && moisture < 30) health -= 2;
+
   return { ...field, moisture: clamp(moisture), growth: clamp(growth), health: clamp(health) };
+}
+
+function buildAlerts(world) {
+  const alerts = [];
+  if (world.storage.food <= 2) alerts.push('Food is critically low.');
+  if (world.well.water_level <= 15) alerts.push('The well is nearly dry.');
+  if (world.house.cleanliness <= 25) alerts.push('The house is getting dirty.');
+  if (world.house.condition <= 45) alerts.push('The house needs repairs.');
+  if (world.animals.hunger >= 78) alerts.push('Animals are hungry.');
+  if (world.fields.east.moisture <= 18 || world.fields.west.moisture <= 18) alerts.push('A field is getting too dry.');
+  if (world.fields.east.growth >= 85 || world.fields.west.growth >= 85) alerts.push('Some crops are ready to harvest.');
+  return alerts;
 }
 
 function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny') {
@@ -130,13 +147,13 @@ function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny')
     well: { water_level: world.well.water_level + (weather === 'rainy' ? 5 : weather === 'stormy' ? 8 : -1) },
     storage: { ...world.storage },
     house: {
-      condition: world.house.condition + (weather === 'stormy' ? -1 : 0),
+      condition: world.house.condition + (weather === 'stormy' ? -2 : 0),
       cleanliness: world.house.cleanliness - 1
     },
     motorcycle: { ...world.motorcycle },
     animals: {
       hunger: world.animals.hunger + 4,
-      health: world.animals.health + (world.animals.hunger > 82 ? -3 : 1),
+      health: world.animals.health + (world.animals.hunger > 82 ? -4 : world.animals.hunger > 65 ? -1 : 1),
       produce: world.animals.produce + (world.animals.hunger < 60 && world.animals.health > 60 ? 1 : 0)
     }
   });
@@ -147,9 +164,13 @@ function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny')
   const field = next.fields[fieldKey];
 
   if (action === 'watering_crops') {
-    field.moisture = clamp(field.moisture + 30);
-    field.health = clamp(field.health + 2);
-    next.well.water_level = clamp(next.well.water_level - 8);
+    if (next.well.water_level > 5) {
+      field.moisture = clamp(field.moisture + 30);
+      field.health = clamp(field.health + 2);
+      next.well.water_level = clamp(next.well.water_level - 8);
+    } else {
+      field.health = clamp(field.health - 2);
+    }
   }
 
   if (action === 'tending_crops') {
@@ -168,7 +189,10 @@ function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny')
 
   if (action === 'chopping_wood') next.storage.wood += 5;
 
-  if (action === 'eating' && next.storage.food > 0) next.storage.food -= 1;
+  if (action === 'eating') {
+    if (next.storage.food > 0) next.storage.food -= 1;
+    else next.house.cleanliness = clamp(next.house.cleanliness - 1);
+  }
 
   if (action === 'tending_animals') {
     next.animals.hunger = clamp(next.animals.hunger - 28);
@@ -184,6 +208,7 @@ function updateWorldStateForTick(currentWorld, decision = {}, weather = 'sunny')
   if (action === 'sleeping') next.house.cleanliness = clamp(next.house.cleanliness - 1);
   if (action === 'sitting') next.house.cleanliness = clamp(next.house.cleanliness + 2);
 
+  next.alerts = buildAlerts(next);
   next.updated_at = new Date().toISOString();
   return writeWorldState(next);
 }
@@ -197,7 +222,8 @@ function summarizeWorldState(worldState) {
     `Well: water ${world.well.water_level}%`,
     `House: condition ${world.house.condition}%, cleanliness ${world.house.cleanliness}%`,
     `Motorcycle: condition ${world.motorcycle.condition}%, fuel ${world.motorcycle.fuel}%`,
-    `Animals: hunger ${world.animals.hunger}%, health ${world.animals.health}%, produce ${world.animals.produce}`
+    `Animals: hunger ${world.animals.hunger}%, health ${world.animals.health}%, produce ${world.animals.produce}`,
+    `Alerts: ${world.alerts.length ? world.alerts.join(' | ') : 'none'}`
   ].join('\n');
 }
 
