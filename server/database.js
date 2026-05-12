@@ -15,6 +15,12 @@ const WORLD_MINUTES_PER_REAL_MS = 1440 / (WORLD_DAY_REAL_MINUTES * 60 * 1000);
 
 let db;
 
+const STOP_WORDS = new Set([
+  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'you', 'your', 'arash', 'creator',
+  'من', 'تو', 'او', 'ما', 'شما', 'آن', 'این', 'یک', 'در', 'به', 'از', 'را', 'با', 'برای',
+  'که', 'است', 'هست', 'کرد', 'شد', 'می', 'های', 'هایش', 'خالق', 'آرش'
+]);
+
 function advanceTime(currentTime, minutesToAdd) {
   const [h = 6, m = 0] = String(currentTime || '06:00').split(':').map(Number);
   const total = h * 60 + m + minutesToAdd;
@@ -43,6 +49,61 @@ function getDefaultState() {
     time_model_version: TIME_MODEL_VERSION,
     timestamp: new Date().toISOString()
   };
+}
+
+function extractKeywords(text, limit = 14) {
+  const words = String(text || '')
+    .toLowerCase()
+    .replace(/[.,!?;:()\[\]{}"'،؛؟«»]/g, ' ')
+    .split(/\s+/)
+    .map(w => w.trim())
+    .filter(w => w.length >= 3 && !STOP_WORDS.has(w));
+
+  return [...new Set(words)].slice(0, limit);
+}
+
+function inferMemoryType(content) {
+  const text = String(content || '').toLowerCase();
+  if (/creator|خالق|دستور|گفت|asked|told|command/.test(text)) return 'creator';
+  if (/eat|food|غذا|خورد|گرسنگ/.test(text)) return 'survival';
+  if (/sleep|خواب|استراحت/.test(text)) return 'survival';
+  if (/field|crop|farm|مزرعه|زمین|محصول|آبیاری/.test(text)) return 'farm';
+  if (/weather|rain|storm|هوا|باران|طوفان/.test(text)) return 'world';
+  return 'life';
+}
+
+function inferMemoryImportance(content, type) {
+  const text = String(content || '').toLowerCase();
+  let score = type === 'creator' ? 8 : type === 'survival' ? 7 : 5;
+  if (/always|never|هر روز|روزانه|همیشه|هرگز|مهم|remember|یادت/.test(text)) score += 2;
+  if (/danger|storm|طوفان|خطر|گرسنگ|خسته|کمبود/.test(text)) score += 1;
+  return Math.max(1, Math.min(10, score));
+}
+
+function normalizeMemory(entry) {
+  const content = String(entry?.content || '').trim();
+  const type = entry?.type || inferMemoryType(content);
+  return {
+    id: entry?.id || `mem_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+    content,
+    timestamp: entry?.timestamp || new Date().toISOString(),
+    world_day: entry?.world_day || null,
+    world_time: entry?.world_time || null,
+    type,
+    importance: Number(entry?.importance) || inferMemoryImportance(content, type),
+    keywords: Array.isArray(entry?.keywords) && entry.keywords.length ? entry.keywords : extractKeywords(content)
+  };
+}
+
+function migrateMemoriesIfNeeded() {
+  const all = db.get('memories').value() || [];
+  let changed = false;
+  const normalized = all.map(entry => {
+    if (entry && entry.id && entry.keywords && entry.type) return entry;
+    changed = true;
+    return normalizeMemory(entry);
+  });
+  if (changed) db.set('memories', normalized).write();
 }
 
 function migrateTimeModelIfNeeded() {
@@ -91,9 +152,9 @@ function initDatabase() {
   db.defaults({
     agent_state: getDefaultState(),
     memories: [
-      { content: 'Arash woke up at dawn and looked at the sky', timestamp: new Date().toISOString() },
-      { content: 'Had a simple breakfast of bread and cheese', timestamp: new Date().toISOString() },
-      { content: 'Went to the farm to check on the crops', timestamp: new Date().toISOString() }
+      normalizeMemory({ content: 'Arash woke up at dawn and looked at the sky', timestamp: new Date().toISOString(), type: 'life' }),
+      normalizeMemory({ content: 'Had a simple breakfast of bread and cheese', timestamp: new Date().toISOString(), type: 'survival' }),
+      normalizeMemory({ content: 'Went to the farm to check on the crops', timestamp: new Date().toISOString(), type: 'farm' })
     ],
     directives: [],
     fired_directive_ids: [],
@@ -102,6 +163,7 @@ function initDatabase() {
   }).write();
 
   migrateTimeModelIfNeeded();
+  migrateMemoriesIfNeeded();
   console.log('[DB] Initialized:', DB_FILE);
 }
 
@@ -122,11 +184,46 @@ function getMemories(limit = 10) {
   return all.slice(-limit).reverse();
 }
 
-function addMemory(content) {
-  const mem = db.get('memories');
-  mem.push({ content, timestamp: new Date().toISOString() }).write();
+function addMemory(content, meta = {}) {
+  const state = db.get('agent_state').value() || {};
+  const entry = normalizeMemory({
+    content,
+    world_day: meta.world_day ?? state.day ?? null,
+    world_time: meta.world_time ?? state.world_time ?? null,
+    type: meta.type,
+    importance: meta.importance,
+    keywords: meta.keywords
+  });
+
+  db.get('memories').push(entry).write();
   const all = db.get('memories').value();
-  if (all.length > 100) db.set('memories', all.slice(-100)).write();
+  if (all.length > 300) db.set('memories', all.slice(-300)).write();
+  return entry;
+}
+
+function searchMemories(query, limit = 8, options = {}) {
+  const all = db.get('memories').value() || [];
+  const qKeywords = extractKeywords(query, 20);
+  const qSet = new Set(qKeywords);
+  const now = Date.now();
+  const preferredTypes = new Set(options.types || []);
+
+  return all
+    .map((memory, index) => {
+      const normalized = normalizeMemory(memory);
+      const overlap = normalized.keywords.filter(k => qSet.has(k)).length;
+      const text = normalized.content.toLowerCase();
+      const directHit = qKeywords.some(k => text.includes(k)) ? 1 : 0;
+      const ageMs = now - new Date(normalized.timestamp).getTime();
+      const ageDays = Number.isFinite(ageMs) ? ageMs / 86400000 : 30;
+      const recency = Math.max(0, 3 - Math.min(3, ageDays / 2));
+      const typeBoost = preferredTypes.has(normalized.type) ? 2 : 0;
+      const score = overlap * 4 + directHit * 2 + normalized.importance * 0.8 + recency + typeBoost + index / 10000;
+      return { ...normalized, score };
+    })
+    .filter(memory => memory.score > 3 || qKeywords.length === 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
 }
 
 function getDirectives() {
@@ -202,7 +299,7 @@ function logWeather(weather, worldTime) {
 module.exports = {
   initDatabase,
   getState, saveState,
-  getMemories, addMemory,
+  getMemories, addMemory, searchMemories,
   getDirectives, addDirective, removeDirective, clearAllDirectives, findDirectiveForTime,
   getFiredDirectiveIds, addFiredDirectiveId, clearFiredDirectiveIds,
   getCreatorMessages, addCreatorMessage,
