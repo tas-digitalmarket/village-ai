@@ -10,7 +10,7 @@
 
   function readClock() {
     if (!baseClock) return null;
-    const elapsedRealMs = Math.max(0, Date.now() - baseClock.timestampMs);
+    const elapsedRealMs = Math.max(0, Date.now() - baseClock.receivedAtMs);
     const addedSeconds = Math.floor(elapsedRealMs * WORLD_SECONDS_PER_REAL_MS);
     const totalSeconds = baseClock.worldSeconds + addedSeconds;
     const day = baseClock.day + Math.floor(totalSeconds / 86400);
@@ -54,13 +54,19 @@
       if (!res.ok) throw new Error(`Clock sync failed: ${res.status}`);
 
       const state = await res.json();
+      const receivedAtMs = Date.now();
       baseClock = {
         day: Number(state.day) || 1,
         worldSeconds: parseWorldMinutes(state.world_time) * 60,
-        timestampMs: state.timestamp ? new Date(state.timestamp).getTime() : Date.now()
+        receivedAtMs
       };
 
-      window.__smoothClockStatus = { ok: true, syncedAt: Date.now(), sourceTime: state.world_time };
+      window.__smoothClockStatus = {
+        ok: true,
+        syncedAt: receivedAtMs,
+        sourceDay: state.day,
+        sourceTime: state.world_time
+      };
       patchHud();
       paintClock();
     } catch (err) {
