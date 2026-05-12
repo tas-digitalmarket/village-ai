@@ -122,55 +122,7 @@
   <div id="thought-bubble" class="hidden"><span id="thought-text"></span></div>
 
   <script type="module" src="main.js?v=8"></script>
-  <script>
-    (function syncExactWorldClock() {
-      const worldSecondsPerRealMs = 60 / 2000;
-      let base = null;
-      function minutesOf(t) {
-        const parts = String(t || '06:00').split(':').map(Number);
-        return (parts[0] || 6) * 60 + (parts[1] || 0);
-      }
-      function current() {
-        if (!base) return null;
-        const addedSeconds = Math.max(0, Math.floor((Date.now() - base.ts) * worldSecondsPerRealMs));
-        const totalSeconds = base.seconds + addedSeconds;
-        const day = base.day + Math.floor(totalSeconds / 86400);
-        const daySeconds = ((totalSeconds % 86400) + 86400) % 86400;
-        const h = Math.floor(daySeconds / 3600);
-        const m = Math.floor((daySeconds % 3600) / 60);
-        const s = daySeconds % 60;
-        return {
-          day,
-          text: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-        };
-      }
-      function paint() {
-        const c = current();
-        if (c) {
-          const d = document.getElementById('stat-day');
-          const t = document.getElementById('stat-time');
-          if (d) d.textContent = `Day ${c.day}`;
-          if (t) t.textContent = c.text;
-        }
-        requestAnimationFrame(paint);
-      }
-      async function sync() {
-        try {
-          const res = await fetch(`/api/state?clock=${Date.now()}`);
-          if (!res.ok) return;
-          const state = await res.json();
-          base = {
-            day: Number(state.day) || 1,
-            seconds: minutesOf(state.world_time) * 60,
-            ts: state.timestamp ? new Date(state.timestamp).getTime() : Date.now()
-          };
-        } catch (e) {}
-      }
-      sync();
-      setInterval(sync, 10000);
-      requestAnimationFrame(paint);
-    })();
-  </script>
+  <script type="module" src="clock-smooth.js?v=1"></script>
   <script>
     const PANEL_ICONS = {
       'panel-status': '📊',
