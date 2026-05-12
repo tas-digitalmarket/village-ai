@@ -10,6 +10,8 @@ const { readWorldState, updateWorldStateForTick } = require('./world-state');
 const WORLD_MINUTE_REAL_MS = 2000;
 const DEFAULT_TASK_DURATION_MINUTES = 30;
 const WORLD_DRIFT_MINUTES = 30;
+const WAKE_UP_MINUTE = 6 * 60;
+const SLEEP_START_MINUTE = 22 * 60;
 
 let tickCount = 0;
 const firedKeys = new Set();
@@ -47,6 +49,15 @@ function taskKey(day, item) {
   return `${day}:${item.source}:${item.id || item.time}:${item.action}`;
 }
 
+function isNightMinute(minute) {
+  return minute >= SLEEP_START_MINUTE || minute < WAKE_UP_MINUTE;
+}
+
+function nextWakeAbs(absMinute, currentMinute) {
+  if (currentMinute < WAKE_UP_MINUTE) return absMinute + (WAKE_UP_MINUTE - currentMinute);
+  return absMinute + (1440 - currentMinute) + WAKE_UP_MINUTE;
+}
+
 function actionEnergyDelta(action) {
   if (action === 'sleeping') return 2;
   if (action === 'eating' || action === 'sitting') return 1;
@@ -82,7 +93,9 @@ function dueCreatorTask(directives, day, worldTime) {
 function dueRoutineTask(day, worldTime) {
   const minute = parseMinutes(worldTime);
   return ROUTINE_MILESTONES.find(item => {
-    if (parseMinutes(item.time) !== minute) return false;
+    const start = parseMinutes(item.time);
+    const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES));
+    if (minute < start || minute >= start + duration) return false;
     return !firedKeys.has(taskKey(day, item));
   }) || null;
 }
@@ -132,6 +145,24 @@ function startTask(item, state, absMinute) {
   };
 }
 
+function startNightSleep(state, absMinute, currentMinute) {
+  const pos = LOCATIONS.bed || LOCATIONS.path_center || { x: 0, z: 0 };
+  return {
+    ...state,
+    current_action: 'sleeping',
+    active_task_label: 'Sleep',
+    active_task_source: 'routine',
+    task_started_at_abs: absMinute,
+    task_ends_at_abs: nextWakeAbs(absMinute, currentMinute),
+    position_x: pos.x,
+    position_y: 0,
+    position_z: pos.z,
+    energy: clamp((state.energy || 80) + 2, 0, 100),
+    hunger: clamp((state.hunger || 20) + 1, 0, 100),
+    mood: 'tired'
+  };
+}
+
 function idleState(state) {
   return {
     ...state,
@@ -161,6 +192,7 @@ async function runMinutePulse(broadcast) {
     const directives = getDirectives();
     const day = state.day || 1;
     const worldTime = state.world_time || '06:00';
+    const minute = parseMinutes(worldTime);
     const abs = absoluteMinute(day, worldTime);
     const weather = generateWeather();
     let worldState = readWorldState();
@@ -169,18 +201,23 @@ async function runMinutePulse(broadcast) {
 
     logWeather(weather, worldTime);
 
-    if (parseMinutes(worldTime) <= 1) {
+    if (minute <= 1) {
       firedKeys.clear();
     }
 
     if (nextState.current_action !== 'idle' && !nextState.task_ends_at_abs) {
       nextState = idleState(nextState);
-      thought = 'کار قبلی‌ام تمام شده؛ تا برنامه بعدی آرام می‌مانم.';
+      thought = 'کار قبلی ام تمام شده؛ تا برنامه بعدی آرام می مانم.';
     }
 
     if (nextState.current_action !== 'idle' && nextState.task_ends_at_abs && abs >= Number(nextState.task_ends_at_abs)) {
       nextState = idleState(nextState);
-      thought = 'کارم تمام شد؛ تا کار بعدی کمی آرام می‌مانم.';
+      thought = 'کارم تمام شد؛ تا کار بعدی کمی آرام می مانم.';
+    }
+
+    if (isNightMinute(minute) && nextState.current_action !== 'sleeping') {
+      nextState = startNightSleep(nextState, abs, minute);
+      thought = 'وقت خواب شبانه است؛ تا صبح استراحت می کنم.';
     }
 
     if (nextState.current_action === 'idle') {
@@ -193,8 +230,8 @@ async function runMinutePulse(broadcast) {
           target_location: task.location || 'path_center'
         }, weather);
         thought = task.source === 'creator'
-          ? 'زمان دستور خالق رسیده؛ انجامش می‌دهم.'
-          : `${task.label} رسیده؛ شروع می‌کنم.`;
+          ? 'زمان دستور خالق رسیده؛ انجامش می دهم.'
+          : `${task.label} رسیده؛ شروع می کنم.`;
         addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.`);
         if (task.source === 'creator' && !task.recurring && task.id) removeDirective(task.id);
       }
