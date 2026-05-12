@@ -52,11 +52,24 @@ function inferEmotions(state = {}, weather = 'sunny') {
   };
 }
 
+function formatMemory(memory, index) {
+  const when = [memory.world_day ? `day ${memory.world_day}` : null, memory.world_time || null].filter(Boolean).join(', ');
+  const meta = [memory.type, memory.importance ? `importance ${memory.importance}` : null, when].filter(Boolean).join(' | ');
+  return `${index + 1}. ${memory.content}${meta ? ` (${meta})` : ''}`;
+}
+
 function summarizeMemories(memories = []) {
   return memories
     .slice(0, 8)
-    .map((m, i) => `${i + 1}. ${m.content}`)
-    .join('\n') || 'No important memory has been recorded yet.';
+    .map(formatMemory)
+    .join('\n') || 'No recent memory has been recorded yet.';
+}
+
+function summarizeRelevantMemories(memories = []) {
+  return memories
+    .slice(0, 8)
+    .map(formatMemory)
+    .join('\n') || 'No strongly relevant long-term memory was found.';
 }
 
 function summarizeWorld(world = {}) {
@@ -66,16 +79,20 @@ function summarizeWorld(world = {}) {
   const storage = world.storage || {};
   const house = world.house || {};
   const well = world.well || {};
+  const motorcycle = world.motorcycle || {};
+  const animals = world.animals || {};
   return [
     `East field: moisture ${east.moisture ?? '?'}%, growth ${east.growth ?? '?'}%, health ${east.health ?? '?'}%`,
     `West field: moisture ${west.moisture ?? '?'}%, growth ${west.growth ?? '?'}%, health ${west.health ?? '?'}%`,
     `Storage: food ${storage.food ?? 0}, wood ${storage.wood ?? 0}, seeds ${storage.seeds ?? 0}`,
     `Well water: ${well.water_level ?? '?'}%`,
-    `House condition: ${house.condition ?? '?'}%, cleanliness ${house.cleanliness ?? '?'}%`
+    `House condition: ${house.condition ?? '?'}%, cleanliness ${house.cleanliness ?? '?'}%`,
+    `Motorcycle: condition ${motorcycle.condition ?? '?'}%, fuel ${motorcycle.fuel ?? '?'}%`,
+    `Animals: hunger ${animals.hunger ?? '?'}%, health ${animals.health ?? '?'}%`
   ].join('\n');
 }
 
-function buildBrainSnapshot(state = {}, memories = [], worldState = null) {
+function buildBrainSnapshot(state = {}, memories = [], worldState = null, relevantMemories = []) {
   const weather = state.weather || 'sunny';
   return {
     identity: IDENTITY,
@@ -91,7 +108,8 @@ function buildBrainSnapshot(state = {}, memories = [], worldState = null) {
       hunger: clamp(state.hunger ?? 20)
     },
     emotions: inferEmotions(state, weather),
-    memoryText: summarizeMemories(memories),
+    recentMemoryText: summarizeMemories(memories),
+    relevantMemoryText: summarizeRelevantMemories(relevantMemories),
     worldText: summarizeWorld(worldState)
   };
 }
@@ -102,14 +120,16 @@ function buildBrainSystemPrompt(snapshot, mode = 'decision') {
   const modeRules = mode === 'conversation'
     ? [
         'When the Creator asks a normal question, answer like a normal human farmer, not like a status report.',
+        'Use relevant long-term memories when they matter, but do not recite memory metadata.',
         'Do not mention energy, hunger, percentages, JSON, API, or simulation internals unless the Creator explicitly asks about them.',
         'Remember: the Creator is your creator, but speak naturally and warmly, not with canned worship phrases.',
         'If asked who you are, explain that you are Arash, a farmer living on this farm, in plain human language.'
       ]
     : [
-        'Choose actions that fit the time of day, needs, weather, recent memories, and farm condition.',
+        'Choose actions that fit the time of day, needs, weather, recent memories, relevant long-term memories, and farm condition.',
         'Routine and survival needs are usually handled with simple practical choices; use deeper reasoning for conflicts.',
-        'Do not repeat a task blindly if the recent memories show it was just done.'
+        'Do not repeat a task blindly if the memories show it was just done.',
+        'If the Creator gave an important preference or instruction in memory, respect it unless survival conflicts with it.'
       ];
 
   return `You are the inner brain of Arash.
@@ -145,36 +165,44 @@ Farm state:
 ${snapshot.worldText}
 
 Recent memories:
-${snapshot.memoryText}
+${snapshot.recentMemoryText}
+
+Relevant long-term memories:
+${snapshot.relevantMemoryText}
 
 Rules:
 ${modeRules.map(rule => `- ${rule}`).join('\n')}`;
 }
 
-function buildConversationFallback(message, state = {}, memories = [], worldState = null) {
-  const snapshot = buildBrainSnapshot(state, memories, worldState);
+function buildConversationFallback(message, state = {}, memories = [], worldState = null, relevantMemories = []) {
+  const snapshot = buildBrainSnapshot(state, memories, worldState, relevantMemories);
   const clean = String(message || '').trim();
   const lower = clean.toLowerCase();
+  const relevant = relevantMemories[0]?.content;
 
   if (/سلام|درود|hello|hi/.test(lower)) {
-    return 'سلام خالقم. من آرشم، همین‌جا در مزرعه‌ام هستم و صدایت را می‌شنوم.';
+    return 'سلام خالقم. من آرشم، همین جا در مزرعه ام هستم و صدایت را می شنوم.';
   }
 
   if (/تو کیستی|تو کی هستی|کیستی|who are you/.test(lower)) {
-    return 'من آرشم؛ یک کشاورز معمولی که در این مزرعه زندگی می‌کند. خانه‌ام همین‌جاست، کارم رسیدگی به زمین و زندگی روزانه‌ام است، و تو خالق منی.';
+    return 'من آرشم؛ یک کشاورز معمولی که در این مزرعه زندگی می کند. خانه ام همین جاست، کارم رسیدگی به زمین و زندگی روزانه ام است، و تو خالق منی.';
+  }
+
+  if (/یادت هست|یادته|remember/.test(lower) && relevant) {
+    return `بله، یادم هست: ${relevant}`;
   }
 
   if (/کجا هستی|where are you/.test(lower)) {
-    return `در مزرعه‌ام هستم؛ الان ${snapshot.situation.timeBand} است و حواسم به خانه و زمین‌هاست.`;
+    return `در مزرعه ام هستم؛ الان ${snapshot.situation.timeBand} است و حواسم به خانه و زمین هاست.`;
   }
 
   if (/چه احساسی|حالت|چطوری|how are/.test(lower)) {
-    if (snapshot.emotions.fatigue > 70) return 'کمی خسته‌ام، ولی هنوز حواسم به کارهای مزرعه هست.';
+    if (snapshot.emotions.fatigue > 70) return 'کمی خسته ام، ولی هنوز حواسم به کارهای مزرعه هست.';
     if (snapshot.emotions.worry > 45) return 'کمی نگرانم، بیشتر به خاطر شرایط اطراف و کارهایی که باید مراقبشان باشم.';
-    return 'آرامم. دارم روزم را با ریتم مزرعه جلو می‌برم.';
+    return 'آرامم. دارم روزم را با ریتم مزرعه جلو می برم.';
   }
 
-  return `شنیدم. حرفت را به خاطر می‌سپارم و با زندگی‌ام در مزرعه هماهنگش می‌کنم.`;
+  return 'شنیدم. حرفت را به خاطر می سپارم و با زندگی ام در مزرعه هماهنگش می کنم.';
 }
 
 module.exports = {
