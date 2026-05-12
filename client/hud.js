@@ -1,6 +1,6 @@
 // hud.js - Redesigned HUD matching the AI Villager sample design
 const ACTION_ICONS = {
-  idle: '💤', walking: '🚶', chopping_wood: '🪓',
+  idle: '☕', walking: '🚶', chopping_wood: '🪓',
   watering_crops: '💧', harvesting: '🌾', eating: '🍞',
   sleeping: '😴', running_to_shelter: '🏃', sitting: '🧘',
   praying: '🙏', fishing: '🎣', tending_animals: '🐄',
@@ -8,7 +8,7 @@ const ACTION_ICONS = {
 };
 
 const ACTION_LABELS = {
-  idle: 'Resting',
+  idle: 'Free Time',
   walking: 'Walking',
   chopping_wood: 'Chopping Wood',
   watering_crops: 'Watering Crops',
