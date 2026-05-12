@@ -6,6 +6,7 @@ const {
 const { LOCATIONS } = require('./ai');
 const { generateWeather } = require('./weather');
 const { readWorldState, applyWorldDrift, applyActionConsequences } = require('./world-state');
+const { buildRiskProfile, chooseRiskTask } = require('./risk-model');
 
 const WORLD_MINUTE_REAL_MS = 2000;
 const DEFAULT_TASK_DURATION_MINUTES = 30;
@@ -50,7 +51,7 @@ function absoluteMinute(day, worldTime) {
 }
 
 function taskKey(day, item) {
-  return `${day}:${item.source}:${item.id || item.time}:${item.action}`;
+  return `${day}:${item.source}:${item.id || item.time || item.risk_id || 'need'}:${item.action}`;
 }
 
 function isNightMinute(minute) {
@@ -88,19 +89,20 @@ function applyBodyNeeds(state, worldState, weather, minute) {
   const foodLow = (worldState.storage?.food ?? 0) <= 2;
   const isStormOutside = (weather === 'stormy' || weather === 'rainy') && isOutsideAction(action);
   const heatWork = minute >= 12 * 60 && minute <= 16 * 60 && isOutsideAction(action) && weather === 'sunny';
+  const overworked = state.task_started_at_abs && state.task_ends_at_abs && Number(state.task_ends_at_abs) - Number(state.task_started_at_abs) >= 45;
 
   hunger += action === 'eating' && !foodLow ? -1.6 : action === 'sleeping' ? 0.04 : 0.08;
 
   if (action === 'sleeping') energy += 0.34;
   else if (action === 'sitting' || action === 'eating') energy += 0.04;
-  else if (['watering_crops', 'harvesting', 'chopping_wood', 'tending_crops'].includes(action)) energy -= 0.18;
+  else if (['watering_crops', 'harvesting', 'chopping_wood', 'tending_crops'].includes(action)) energy -= overworked ? 0.24 : 0.18;
   else if (action === 'running_to_shelter') energy -= 0.26;
   else if (isOutsideAction(action)) energy -= 0.1;
   else energy -= 0.02;
 
   if (foodLow && hunger > 60) energy -= 0.05;
-  if (isStormOutside) energy -= 0.08;
-  if (heatWork) energy -= 0.05;
+  if (isStormOutside) energy -= weather === 'stormy' ? 0.14 : 0.08;
+  if (heatWork) energy -= 0.08;
   if (hunger > 88) energy -= 0.08;
 
   energy = roundNeed(clamp(energy, 0, 100));
@@ -109,6 +111,7 @@ function applyBodyNeeds(state, worldState, weather, minute) {
   if (hunger > 88) mood = 'hungry';
   else if (energy < 18) mood = 'tired';
   else if (isStormOutside) mood = 'worried';
+  else if (heatWork) mood = 'tired';
   else if (action === 'eating') mood = 'content';
   else if (action === 'sleeping') mood = 'tired';
   else if (['watering_crops', 'harvesting', 'chopping_wood', 'tending_crops'].includes(action)) mood = 'focused';
@@ -164,6 +167,9 @@ function makeNeedTask(label, action, location, duration = 25, priority = 50, rea
 }
 
 function chooseNeedDrivenTask(state, worldState, weather, minute, criticalOnly = false) {
+  const riskTask = chooseRiskTask(state, worldState, weather, minute, criticalOnly);
+  if (riskTask) return riskTask;
+
   const energy = Number(state.energy ?? 80);
   const hunger = Number(state.hunger ?? 20);
   const food = Number(worldState.storage?.food ?? 0);
@@ -229,6 +235,8 @@ function startTask(item, state, absMinute) {
     active_task_source: item.source || 'routine',
     active_task_reason: item.reason || null,
     active_task_location: location,
+    active_risk_id: item.risk_id || null,
+    active_risk_severity: item.risk_severity || null,
     task_started_at_abs: absMinute,
     task_ends_at_abs: absMinute + duration,
     position_x: pos.x,
@@ -249,6 +257,8 @@ function startNightSleep(state, absMinute, currentMinute) {
     active_task_source: 'routine',
     active_task_reason: 'night sleep',
     active_task_location: 'bed',
+    active_risk_id: null,
+    active_risk_severity: null,
     task_started_at_abs: absMinute,
     task_ends_at_abs: nextWakeAbs(absMinute, currentMinute),
     position_x: pos.x,
@@ -268,6 +278,8 @@ function idleState(state) {
     active_task_source: null,
     active_task_reason: null,
     active_task_location: null,
+    active_risk_id: null,
+    active_risk_severity: null,
     task_started_at_abs: null,
     task_ends_at_abs: null,
     mood: state.mood || 'content'
@@ -316,6 +328,7 @@ async function runMinutePulse(broadcast) {
     const weather = generateWeather();
     let worldState = readWorldState();
     let nextState = applyBodyNeeds({ ...state, weather, day, world_time: worldTime }, worldState, weather, minute);
+    let riskState = buildRiskProfile(nextState, worldState, weather, minute);
     let thought = null;
 
     logWeather(weather, worldTime);
@@ -333,6 +346,8 @@ async function runMinutePulse(broadcast) {
       worldState = completed.worldState;
       thought = completed.thought || 'کارم تمام شد؛ حالا اول می بینم چه کاری واقعا لازم است.';
     }
+
+    riskState = buildRiskProfile(nextState, worldState, weather, minute);
 
     if (isNightMinute(minute) && nextState.current_action !== 'sleeping') {
       nextState = startNightSleep(nextState, abs, minute);
@@ -357,10 +372,12 @@ async function runMinutePulse(broadcast) {
         nextState = startTask(task, nextState, abs);
         thought = task.source === 'creator'
           ? 'زمان دستور خالق رسیده؛ انجامش می دهم.'
-          : task.source === 'need'
-            ? `الان ${task.label} مهم تر است؛ ${task.reason || 'بهتر است انجامش بدهم'}.`
-            : `${task.label} رسیده؛ شروع می کنم.`;
-        addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.${task.reason ? ` دلیل: ${task.reason}.` : ''}`);
+          : task.risk_id
+            ? `الان باید مراقب ${task.label} باشم؛ ${task.reason || 'خطر دارد بالا می رود'}.`
+            : task.source === 'need'
+              ? `الان ${task.label} مهم تر است؛ ${task.reason || 'بهتر است انجامش بدهم'}.`
+              : `${task.label} رسیده؛ شروع می کنم.`;
+        addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.${task.reason ? ` دلیل: ${task.reason}.` : ''}${task.risk_id ? ` خطر: ${task.risk_id}.` : ''}`);
         if (task.source === 'creator' && !task.recurring && task.id) removeDirective(task.id);
       }
     }
@@ -368,6 +385,8 @@ async function runMinutePulse(broadcast) {
     const drift = maybeUpdateWorldDrift(nextState, worldState, weather, abs);
     worldState = drift.worldState;
     nextState.last_world_drift_abs = drift.lastWorldDriftAbs;
+    riskState = buildRiskProfile(nextState, worldState, weather, minute);
+    nextState.risk_state = riskState;
     saveState(nextState);
 
     const upcomingSchedule = buildUpcomingSchedule(getDirectives(), worldTime, weather);
@@ -380,6 +399,7 @@ async function runMinutePulse(broadcast) {
       type: 'state',
       data: {
         ...nextState,
+        risk_state: riskState,
         world_state: worldState,
         thought,
         memories: getMemories(5),
