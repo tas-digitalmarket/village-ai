@@ -71,6 +71,47 @@ function actionHungerDelta(action) {
   return 1;
 }
 
+function isOutsideAction(action) {
+  return ['walking', 'chopping_wood', 'watering_crops', 'harvesting', 'running_to_shelter', 'fishing', 'tending_animals', 'checking_motorcycle', 'wandering', 'tending_crops'].includes(action);
+}
+
+function applyBodyNeeds(state, worldState, weather, minute) {
+  const action = state.current_action || 'idle';
+  let energy = Number(state.energy ?? 80);
+  let hunger = Number(state.hunger ?? 20);
+  let mood = state.mood || 'content';
+
+  const foodLow = (worldState.storage?.food ?? 0) <= 2;
+  const isStormOutside = (weather === 'stormy' || weather === 'rainy') && isOutsideAction(action);
+  const heatWork = minute >= 12 * 60 && minute <= 16 * 60 && isOutsideAction(action) && weather === 'sunny';
+
+  hunger += action === 'eating' && !foodLow ? -1.6 : action === 'sleeping' ? 0.04 : 0.08;
+
+  if (action === 'sleeping') energy += 0.34;
+  else if (action === 'sitting' || action === 'eating') energy += 0.04;
+  else if (['watering_crops', 'harvesting', 'chopping_wood', 'tending_crops'].includes(action)) energy -= 0.18;
+  else if (action === 'running_to_shelter') energy -= 0.26;
+  else if (isOutsideAction(action)) energy -= 0.1;
+  else energy -= 0.02;
+
+  if (foodLow && hunger > 60) energy -= 0.05;
+  if (isStormOutside) energy -= 0.08;
+  if (heatWork) energy -= 0.05;
+  if (hunger > 88) energy -= 0.08;
+
+  energy = clamp(Math.round(energy), 0, 100);
+  hunger = clamp(Math.round(hunger), 0, 100);
+
+  if (hunger > 88) mood = 'hungry';
+  else if (energy < 18) mood = 'tired';
+  else if (isStormOutside) mood = 'worried';
+  else if (action === 'eating') mood = 'content';
+  else if (action === 'sleeping') mood = 'tired';
+  else if (['watering_crops', 'harvesting', 'chopping_wood', 'tending_crops'].includes(action)) mood = 'focused';
+
+  return { ...state, energy, hunger, mood };
+}
+
 function normalizeDirective(directive) {
   return {
     ...directive,
@@ -196,7 +237,7 @@ async function runMinutePulse(broadcast) {
     const abs = absoluteMinute(day, worldTime);
     const weather = generateWeather();
     let worldState = readWorldState();
-    let nextState = { ...state, weather, day, world_time: worldTime };
+    let nextState = applyBodyNeeds({ ...state, weather, day, world_time: worldTime }, worldState, weather, minute);
     let thought = null;
 
     logWeather(weather, worldTime);
@@ -216,6 +257,11 @@ async function runMinutePulse(broadcast) {
     if (isNightMinute(minute) && nextState.current_action !== 'sleeping') {
       nextState = startNightSleep(nextState, abs, minute);
       thought = 'وقت خواب شبانه است؛ تا صبح استراحت می کنم.';
+    }
+
+    if (nextState.energy <= 8 && nextState.current_action !== 'sleeping') {
+      nextState = startNightSleep(nextState, abs, minute);
+      thought = 'بدنم دیگر توان ندارد؛ باید بخوابم تا از پا نیفتم.';
     }
 
     if (nextState.current_action === 'idle') {
