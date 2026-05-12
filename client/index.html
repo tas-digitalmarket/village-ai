@@ -8,15 +8,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=9" />
-  <link rel="stylesheet" href="world-state.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="world-state.css?v=3" />
   <script type="importmap">
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "./hud.js?v=7": "./hud.js?v=9",
-      "./hud.js?v=8": "./hud.js?v=9"
+      "./hud.js?v=7": "./hud.js?v=10",
+      "./hud.js?v=8": "./hud.js?v=10",
+      "./hud.js?v=9": "./hud.js?v=10"
     }
   }
   </script>
@@ -31,75 +32,93 @@
   <canvas id="world-canvas"></canvas>
 
   <div id="hud">
-    <div id="hud-left">
-      <div class="hud-card glass-panel" id="panel-status">
-        <div class="panel-header">
-          <h1 class="hud-title">AI Villager</h1>
-          <button class="panel-min-btn" data-panel="panel-status" title="Minimize">⊟</button>
+    <aside id="dashboard" class="glass-panel dashboard-shell">
+      <header class="dashboard-header">
+        <div>
+          <div class="dashboard-kicker">Village AI</div>
+          <h1 class="dashboard-title">Arash Life Console</h1>
         </div>
-        <div class="panel-body">
-          <div class="stat-group">
-            <div class="stat-item"><span class="stat-label">Day:</span><span class="stat-value" id="stat-day">1</span></div>
-            <div class="stat-item"><span class="stat-label">Time:</span><span class="stat-value" id="stat-time">06:00:00</span></div>
-            <div class="stat-item"><span class="stat-label">Weather:</span><span class="stat-value" id="stat-weather">sunny</span></div>
-          </div>
-          <div class="stat-group">
-            <div class="bar-row">
-              <div class="bar-header"><span>Energy</span><span id="energy-val">80%</span></div>
-              <div class="bar-container"><div class="bar-fill energy-bar" id="energy-bar"></div></div>
-            </div>
-            <div class="bar-row">
-              <div class="bar-header"><span>Hunger</span><span id="hunger-val">20%</span></div>
-              <div class="bar-container"><div class="bar-fill hunger-bar" id="hunger-bar"></div></div>
-            </div>
-          </div>
-          <div class="task-section">
-            <div class="section-label">Current Task</div>
-            <div class="task-display"><span id="task-icon">💤</span><span id="task-label">Resting</span></div>
-          </div>
+        <div class="dashboard-chip-row">
+          <span class="dashboard-chip" id="conn-status">● Reconnecting...</span>
+          <span class="dashboard-chip dashboard-chip--soft" id="stat-day">Day 1</span>
         </div>
-      </div>
+      </header>
 
-      <div class="hud-card glass-panel" id="panel-schedule">
-        <div class="panel-header">
-          <span class="section-label" style="margin-bottom:0">📅 Upcoming Schedule</span>
-          <button class="panel-min-btn" data-panel="panel-schedule" title="Minimize">⊟</button>
+      <section class="dashboard-overview">
+        <div class="overview-grid">
+          <div class="overview-stat"><span>Time</span><strong id="stat-time">06:00:00</strong></div>
+          <div class="overview-stat"><span>Weather</span><strong id="stat-weather">sunny</strong></div>
+          <div class="overview-stat"><span>Mood</span><strong id="stat-mood">content</strong></div>
         </div>
-        <div class="panel-body schedule-body">
-          <div class="schedule-container">
-            <ul id="schedule-list" class="schedule-list"><li class="schedule-empty">No directives set</li></ul>
+        <div class="vitals-grid">
+          <div class="vital-card">
+            <div class="bar-header"><span>Energy</span><span id="energy-val">80%</span></div>
+            <div class="bar-container"><div class="bar-fill energy-bar" id="energy-bar"></div></div>
+          </div>
+          <div class="vital-card">
+            <div class="bar-header"><span>Hunger</span><span id="hunger-val">20%</span></div>
+            <div class="bar-container"><div class="bar-fill hunger-bar" id="hunger-bar"></div></div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="hud-card glass-panel" id="panel-world">
-        <div class="panel-header">
-          <span class="section-label" style="margin-bottom:0">🌾 World State</span>
-          <button class="panel-min-btn" data-panel="panel-world" title="Minimize">⊟</button>
-        </div>
-        <div class="panel-body">
-          <div id="world-state-list" class="world-state-list">
-            <div class="world-empty">Loading world...</div>
+      <section class="dashboard-section dashboard-section--focus">
+        <div class="dashboard-section-head"><span>Intent</span><strong id="task-source-chip">steady</strong></div>
+        <div class="intent-row">
+          <span class="intent-icon" id="task-icon">💤</span>
+          <div class="intent-copy">
+            <strong id="task-label">Resting</strong>
+            <span id="task-context">Waiting for the next meaningful action.</span>
           </div>
         </div>
-      </div>
-    </div>
+        <div class="insight-strip" id="thought-bubble"><span id="thought-text">Arash is observing the world.</span></div>
+      </section>
+
+      <section class="dashboard-section">
+        <div class="dashboard-section-head"><span>Today</span><strong id="risk-pill">stable</strong></div>
+        <div id="daily-goals-list" class="dashboard-list muted-empty">Loading daily plan...</div>
+      </section>
+
+      <section class="dashboard-section dashboard-split">
+        <div>
+          <div class="dashboard-section-head"><span>Risk & Needs</span></div>
+          <div id="risk-detail" class="dashboard-list muted-empty">No active risk.</div>
+        </div>
+        <div>
+          <div class="dashboard-section-head"><span>Skills</span></div>
+          <div id="skills-list" class="dashboard-list muted-empty">No growth yet.</div>
+        </div>
+      </section>
+
+      <section class="dashboard-section">
+        <div class="dashboard-section-head"><span>World Ledger</span></div>
+        <div id="world-state-list" class="world-state-list">
+          <div class="world-empty">Loading world...</div>
+        </div>
+      </section>
+
+      <section class="dashboard-section dashboard-split">
+        <div>
+          <div class="dashboard-section-head"><span>Recent Memory</span></div>
+          <ul id="memory-list" class="dashboard-feed"></ul>
+        </div>
+        <div>
+          <div class="dashboard-section-head"><span>World Events</span></div>
+          <div id="events-list" class="dashboard-list muted-empty">No notable event yet.</div>
+        </div>
+      </section>
+
+      <section class="dashboard-section">
+        <div class="dashboard-section-head"><span>Schedule</span></div>
+        <div class="schedule-container">
+          <ul id="schedule-list" class="schedule-list"><li class="schedule-empty">Loading today's schedule...</li></ul>
+        </div>
+      </section>
+    </aside>
 
     <div id="hud-center">
       <button id="view-toggle" class="view-inside-btn"><span>🏠</span> View Inside</button>
     </div>
-
-    <div id="hud-right">
-      <div class="hud-card glass-panel" id="panel-memories">
-        <div class="panel-header">
-          <span class="section-label" style="margin-bottom:0">🧠 Recent Memories</span>
-          <button class="panel-min-btn" data-panel="panel-memories" title="Minimize">⊟</button>
-        </div>
-        <div class="panel-body"><ul id="memory-list" class="schedule-list"></ul></div>
-      </div>
-    </div>
-
-    <div id="conn-status" class="conn-dot offline">● Reconnecting...</div>
   </div>
 
   <div id="creator-toggle" class="glass-panel">💬</div>
@@ -120,45 +139,7 @@
     </div>
   </div>
 
-  <div id="thought-bubble" class="hidden"><span id="thought-text"></span></div>
-
-  <script type="module" src="main.js?v=9"></script>
+  <script type="module" src="main.js?v=10"></script>
   <script type="module" src="clock-smooth.js?v=2"></script>
-  <script>
-    const PANEL_ICONS = {
-      'panel-status': '📊',
-      'panel-schedule': '📅',
-      'panel-world': '🌾',
-      'panel-memories': '🧠'
-    };
-    function initPanelToggles() {
-      document.querySelectorAll('.panel-min-btn').forEach(btn => {
-        btn.addEventListener('click', e => {
-          e.stopPropagation();
-          const card = document.getElementById(btn.dataset.panel);
-          togglePanel(card, btn);
-        });
-      });
-      document.querySelectorAll('.hud-card').forEach(card => {
-        card.addEventListener('click', () => {
-          if (card.classList.contains('collapsed')) {
-            const btn = card.querySelector('.panel-min-btn');
-            togglePanel(card, btn);
-          }
-        });
-      });
-    }
-    function togglePanel(card, btn) {
-      const isCollapsed = card.classList.toggle('collapsed');
-      if (isCollapsed) {
-        btn.textContent = PANEL_ICONS[card.id] || '⊞';
-        btn.title = 'Restore';
-      } else {
-        btn.textContent = '⊟';
-        btn.title = 'Minimize';
-      }
-    }
-    document.addEventListener('DOMContentLoaded', initPanelToggles);
-  </script>
 </body>
 </html>
