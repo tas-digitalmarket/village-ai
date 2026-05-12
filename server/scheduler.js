@@ -4,6 +4,7 @@ const {
   removeDirective, getDirectives, WORLD_DAY_REAL_MINUTES
 } = require('./database');
 const { LOCATIONS } = require('./ai');
+const { updateAidaRoutine } = require('./aida');
 const { generateWeather } = require('./weather');
 const { readWorldState, applyWorldDrift, applyActionConsequences } = require('./world-state');
 const { buildRiskProfile, chooseRiskTask } = require('./risk-model');
@@ -36,52 +37,16 @@ const ROUTINE_MILESTONES = [
   { time: '22:00', label: 'Sleep', action: 'sleeping', location: 'bed', duration: 480, source: 'routine' }
 ];
 
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
-
-function roundNeed(v) {
-  return Math.round(v * 10) / 10;
-}
-
-function parseMinutes(time) {
-  const [h = 0, m = 0] = String(time || '00:00').split(':').map(Number);
-  return h * 60 + m;
-}
-
-function absoluteMinute(day, worldTime) {
-  return ((day || 1) - 1) * 1440 + parseMinutes(worldTime);
-}
-
-function taskKey(day, item) {
-  return `${day}:${item.source}:${item.id || item.time || item.risk_id || item.goal_id || 'need'}:${item.action}`;
-}
-
-function isNightMinute(minute) {
-  return minute >= SLEEP_START_MINUTE || minute < WAKE_UP_MINUTE;
-}
-
-function nextWakeAbs(absMinute, currentMinute) {
-  if (currentMinute < WAKE_UP_MINUTE) return absMinute + (WAKE_UP_MINUTE - currentMinute);
-  return absMinute + (1440 - currentMinute) + WAKE_UP_MINUTE;
-}
-
-function isOutsideAction(action) {
-  return ['walking', 'chopping_wood', 'watering_crops', 'harvesting', 'running_to_shelter', 'fishing', 'tending_animals', 'checking_motorcycle', 'wandering', 'tending_crops'].includes(action);
-}
-
-function actionEnergyDelta(action) {
-  if (action === 'sleeping') return 2;
-  if (action === 'eating' || action === 'sitting') return 1;
-  if (action === 'running_to_shelter') return -2;
-  return -1;
-}
-
-function actionHungerDelta(action) {
-  if (action === 'eating') return -12;
-  if (action === 'sleeping') return 1;
-  return 1;
-}
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function roundNeed(v) { return Math.round(v * 10) / 10; }
+function parseMinutes(time) { const [h = 0, m = 0] = String(time || '00:00').split(':').map(Number); return h * 60 + m; }
+function absoluteMinute(day, worldTime) { return ((day || 1) - 1) * 1440 + parseMinutes(worldTime); }
+function taskKey(day, item) { return `${day}:${item.source}:${item.id || item.time || item.risk_id || item.goal_id || 'need'}:${item.action}`; }
+function isNightMinute(minute) { return minute >= SLEEP_START_MINUTE || minute < WAKE_UP_MINUTE; }
+function nextWakeAbs(absMinute, currentMinute) { if (currentMinute < WAKE_UP_MINUTE) return absMinute + (WAKE_UP_MINUTE - currentMinute); return absMinute + (1440 - currentMinute) + WAKE_UP_MINUTE; }
+function isOutsideAction(action) { return ['walking', 'chopping_wood', 'watering_crops', 'harvesting', 'running_to_shelter', 'fishing', 'tending_animals', 'checking_motorcycle', 'wandering', 'tending_crops'].includes(action); }
+function actionEnergyDelta(action) { if (action === 'sleeping') return 2; if (action === 'eating' || action === 'sitting') return 1; if (action === 'running_to_shelter') return -2; return -1; }
+function actionHungerDelta(action) { if (action === 'eating') return -12; if (action === 'sleeping') return 1; return 1; }
 
 function applyBodyNeeds(state, worldState, weather, minute) {
   const action = state.current_action || 'idle';
@@ -129,38 +94,14 @@ function normalizeDirective(directive) {
   };
 }
 
-function dueCreatorTask(directives, day, worldTime) {
-  const minute = parseMinutes(worldTime);
-  return directives.map(normalizeDirective).find(d => d.time && parseMinutes(d.time) === minute && !firedKeys.has(taskKey(day, d))) || null;
-}
-
-function dueRoutineTask(day, worldTime) {
-  const minute = parseMinutes(worldTime);
-  return ROUTINE_MILESTONES.find(item => {
-    const start = parseMinutes(item.time);
-    const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES));
-    return minute >= start && minute < start + duration && !firedKeys.has(taskKey(day, item));
-  }) || null;
-}
-
-function fieldChoice(world, predicate) {
-  const entries = [
-    { key: 'east', location: 'east_field', field: world.fields?.east || {} },
-    { key: 'west', location: 'west_field', field: world.fields?.west || {} }
-  ].filter(({ field }) => predicate(field));
-  if (!entries.length) return null;
-  entries.sort((a, b) => ((b.field.growth || 0) - (a.field.growth || 0)) || ((a.field.moisture || 0) - (b.field.moisture || 0)));
-  return entries[0];
-}
-
-function makeNeedTask(label, action, location, duration = 25, priority = 50, reason = '') {
-  return { time: null, label, action, location, duration, source: 'need', priority, reason };
-}
+function dueCreatorTask(directives, day, worldTime) { const minute = parseMinutes(worldTime); return directives.map(normalizeDirective).find(d => d.time && parseMinutes(d.time) === minute && !firedKeys.has(taskKey(day, d))) || null; }
+function dueRoutineTask(day, worldTime) { const minute = parseMinutes(worldTime); return ROUTINE_MILESTONES.find(item => { const start = parseMinutes(item.time); const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES)); return minute >= start && minute < start + duration && !firedKeys.has(taskKey(day, item)); }) || null; }
+function fieldChoice(world, predicate) { const entries = [{ key: 'east', location: 'east_field', field: world.fields?.east || {} }, { key: 'west', location: 'west_field', field: world.fields?.west || {} }].filter(({ field }) => predicate(field)); if (!entries.length) return null; entries.sort((a, b) => ((b.field.growth || 0) - (a.field.growth || 0)) || ((a.field.moisture || 0) - (b.field.moisture || 0))); return entries[0]; }
+function makeNeedTask(label, action, location, duration = 25, priority = 50, reason = '') { return { time: null, label, action, location, duration, source: 'need', priority, reason }; }
 
 function chooseNeedDrivenTask(state, worldState, weather, minute, criticalOnly = false) {
   const riskTask = chooseRiskTask(state, worldState, weather, minute, criticalOnly);
   if (riskTask) return riskTask;
-
   const energy = Number(state.energy ?? 80);
   const hunger = Number(state.hunger ?? 20);
   const food = Number(worldState.storage?.food ?? 0);
@@ -168,12 +109,10 @@ function chooseNeedDrivenTask(state, worldState, weather, minute, criticalOnly =
   const readyField = fieldChoice(worldState, f => (f.growth || 0) >= 85);
   const dryField = fieldChoice(worldState, f => (f.moisture || 0) <= 18);
   const weakField = fieldChoice(worldState, f => (f.health || 0) <= 45);
-
   if (energy <= 14) return makeNeedTask('Emergency Sleep', 'sleeping', 'bed', 75, 100, 'energy is critically low');
   if (hunger >= 92 && food > 0) return makeNeedTask('Eat Before Weakness', 'eating', 'table', 20, 98, 'hunger is critical');
   if ((weather === 'stormy' || weather === 'rainy') && !inShelter && energy < 35) return makeNeedTask('Take Shelter', 'running_to_shelter', 'home', 12, 95, 'bad weather and low energy');
   if (criticalOnly) return null;
-
   if (hunger >= 82 && food > 0) return makeNeedTask('Eat Something', 'eating', 'table', 20, 88, 'hunger is high');
   if (food <= 2 && readyField) return makeNeedTask('Harvest Food Reserve', 'harvesting', readyField.location, 40, 86, 'food is low and crops are ready');
   if (readyField) return makeNeedTask('Harvest Ready Crops', 'harvesting', readyField.location, 40, 82, 'crops are ready');
@@ -190,74 +129,22 @@ function buildUpcomingSchedule(directives, worldTime) {
   const schedule = [];
   (directives || []).map(normalizeDirective).forEach(d => schedule.push({ id: d.id, time: d.time, label: d.label || d.action, action: d.action, recurring: d.recurring, source: 'creator' }));
   const creatorTimes = new Set(schedule.map(s => s.time));
-  ROUTINE_MILESTONES.forEach(m => {
-    if (!creatorTimes.has(m.time)) schedule.push({ time: m.time, label: m.label, action: m.action, source: 'routine' });
-  });
+  ROUTINE_MILESTONES.forEach(m => { if (!creatorTimes.has(m.time)) schedule.push({ time: m.time, label: m.label, action: m.action, source: 'routine' }); });
   schedule.sort((a, b) => a.time.localeCompare(b.time));
   const currentMinutes = parseMinutes(worldTime || '00:00');
   return schedule.filter(s => parseMinutes(s.time) >= currentMinutes).slice(0, 10);
 }
 
-function startTask(item, state, absMinute) {
-  const location = item.location || 'path_center';
-  const pos = LOCATIONS[location] || LOCATIONS.path_center || { x: 0, z: 0 };
-  const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES));
-  return {
-    ...state,
-    current_action: item.action || 'idle',
-    active_task_label: item.label || item.action || 'Task',
-    active_task_source: item.source || 'routine',
-    active_task_reason: item.reason || null,
-    active_task_location: location,
-    active_goal_id: item.goal_id || null,
-    active_goal_title: item.goal_title || null,
-    active_risk_id: item.risk_id || null,
-    active_risk_severity: item.risk_severity || null,
-    task_started_at_abs: absMinute,
-    task_ends_at_abs: absMinute + duration,
-    position_x: pos.x,
-    position_y: 0,
-    position_z: pos.z,
-    energy: roundNeed(clamp((state.energy || 80) + actionEnergyDelta(item.action), 0, 100)),
-    hunger: roundNeed(clamp((state.hunger || 20) + actionHungerDelta(item.action), 0, 100)),
-    mood: item.action === 'sleeping' ? 'tired' : item.action === 'eating' ? 'content' : 'focused'
-  };
-}
-
-function idleState(state) {
-  return {
-    ...state,
-    current_action: 'idle',
-    active_task_label: null,
-    active_task_source: null,
-    active_task_reason: null,
-    active_task_location: null,
-    active_goal_id: null,
-    active_goal_title: null,
-    active_risk_id: null,
-    active_risk_severity: null,
-    task_started_at_abs: null,
-    task_ends_at_abs: null,
-    mood: state.mood || 'content'
-  };
-}
-
-function startNightSleep(state, absMinute, currentMinute) {
-  return startTask({ label: 'Sleep', action: 'sleeping', location: 'bed', duration: nextWakeAbs(absMinute, currentMinute) - absMinute, source: 'routine', reason: 'night sleep' }, state, absMinute);
-}
-
-function maybeUpdateWorldDrift(state, worldState, weather, absMinute) {
-  const last = Number(state.last_world_drift_abs || 0);
-  if (last && absMinute - last < WORLD_DRIFT_MINUTES) return { worldState, lastWorldDriftAbs: last };
-  return { worldState: applyWorldDrift(worldState, weather), lastWorldDriftAbs: absMinute };
-}
+function startTask(item, state, absMinute) { const location = item.location || 'path_center'; const pos = LOCATIONS[location] || LOCATIONS.path_center || { x: 0, z: 0 }; const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES)); return { ...state, current_action: item.action || 'idle', active_task_label: item.label || item.action || 'Task', active_task_source: item.source || 'routine', active_task_reason: item.reason || null, active_task_location: location, active_goal_id: item.goal_id || null, active_goal_title: item.goal_title || null, active_risk_id: item.risk_id || null, active_risk_severity: item.risk_severity || null, task_started_at_abs: absMinute, task_ends_at_abs: absMinute + duration, position_x: pos.x, position_y: 0, position_z: pos.z, energy: roundNeed(clamp((state.energy || 80) + actionEnergyDelta(item.action), 0, 100)), hunger: roundNeed(clamp((state.hunger || 20) + actionHungerDelta(item.action), 0, 100)), mood: item.action === 'sleeping' ? 'tired' : item.action === 'eating' ? 'content' : 'focused' }; }
+function idleState(state) { return { ...state, current_action: 'idle', active_task_label: null, active_task_source: null, active_task_reason: null, active_task_location: null, active_goal_id: null, active_goal_title: null, active_risk_id: null, active_risk_severity: null, task_started_at_abs: null, task_ends_at_abs: null, mood: state.mood || 'content' }; }
+function startNightSleep(state, absMinute, currentMinute) { return startTask({ label: 'Sleep', action: 'sleeping', location: 'bed', duration: nextWakeAbs(absMinute, currentMinute) - absMinute, source: 'routine', reason: 'night sleep' }, state, absMinute); }
+function maybeUpdateWorldDrift(state, worldState, weather, absMinute) { const last = Number(state.last_world_drift_abs || 0); if (last && absMinute - last < WORLD_DRIFT_MINUTES) return { worldState, lastWorldDriftAbs: last }; return { worldState: applyWorldDrift(worldState, weather), lastWorldDriftAbs: absMinute }; }
 
 function completeActiveTask(state, worldState, weather, worldTime) {
   const action = state.current_action;
   const label = state.active_task_label || action;
   const location = state.active_task_location || 'path_center';
   if (!action || action === 'idle') return { state: idleState(state), worldState, thought: null };
-
   const result = applyActionConsequences(worldState, { action, target_location: location }, weather);
   let nextState = recordSkillProgress(state, action);
   nextState = completeGoalStep(nextState, action, location);
@@ -289,6 +176,7 @@ async function runMinutePulse(broadcast) {
     let riskState = buildRiskProfile(nextState, worldState, weather, minute);
     nextState = ensureDailyPlan(nextState, worldState, riskState);
     let thought = null;
+    const aidaState = updateAidaRoutine(worldTime);
 
     logWeather(weather, worldTime);
     if (minute <= 1) firedKeys.clear();
@@ -297,7 +185,6 @@ async function runMinutePulse(broadcast) {
       nextState = idleState(nextState);
       thought = 'کار قبلی ام تمام شده؛ تا برنامه بعدی آرام می مانم.';
     }
-
     if (nextState.current_action !== 'idle' && nextState.task_ends_at_abs && abs >= Number(nextState.task_ends_at_abs)) {
       const completed = completeActiveTask(nextState, worldState, weather, worldTime);
       nextState = completed.state;
@@ -327,7 +214,6 @@ async function runMinutePulse(broadcast) {
       nextState = startNightSleep(nextState, abs, minute);
       thought = 'وقت خواب شبانه است؛ تا صبح استراحت می کنم.';
     }
-
     if (nextState.energy <= 8 && nextState.current_action !== 'sleeping') {
       nextState = startTask(makeNeedTask('Emergency Sleep', 'sleeping', 'bed', 75, 100, 'energy is critically low'), nextState, abs);
       thought = 'بدنم دیگر توان ندارد؛ باید بخوابم تا از پا نیفتم.';
@@ -340,7 +226,6 @@ async function runMinutePulse(broadcast) {
       const goalTask = chooseGoalTask(nextState, minute);
       const routineTask = dueRoutineTask(day, worldTime);
       const task = criticalNeed || creatorTask || needTask || goalTask || routineTask;
-
       if (task) {
         if (task.source !== 'need' && task.source !== 'goal') firedKeys.add(taskKey(day, task));
         nextState = startTask(task, nextState, abs);
@@ -370,6 +255,7 @@ async function runMinutePulse(broadcast) {
         thought,
         memories: getMemories(5),
         upcomingSchedule,
+        ida_state: aidaState,
         apiKeyMissing: !hasAiKey
       }
     });
@@ -385,8 +271,5 @@ function startScheduler(broadcast) {
   setInterval(() => runMinutePulse(broadcast), WORLD_MINUTE_REAL_MS);
 }
 
-async function catchUpSimulation() {
-  return getState();
-}
-
+async function catchUpSimulation() { return getState(); }
 module.exports = { startScheduler, buildUpcomingSchedule, catchUpSimulation };
