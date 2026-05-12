@@ -25,7 +25,7 @@ function esc(value) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/\"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
 
@@ -62,11 +62,23 @@ export class HUD {
     this.$events = document.getElementById('events-list');
     this.$schedule = document.getElementById('schedule-list');
     this.$conn = document.getElementById('conn-status');
+    this.$dashboard = document.getElementById('dashboard');
+    this.$dashboardToggle = document.getElementById('dashboard-toggle');
     this.$intentPanel = document.getElementById('intent-panel');
     this.$intentToggle = document.getElementById('intent-toggle');
     this._dayCount = 1;
     this._lastHour = -1;
+    this.initDashboardToggle();
     this.initIntentToggle();
+  }
+
+  initDashboardToggle() {
+    if (!this.$dashboard || !this.$dashboardToggle) return;
+    this.$dashboardToggle.addEventListener('click', () => {
+      const collapsed = this.$dashboard.classList.toggle('is-collapsed');
+      this.$dashboardToggle.textContent = collapsed ? '+' : '−';
+      this.$dashboardToggle.title = collapsed ? 'Expand console' : 'Minimize console';
+    });
   }
 
   initIntentToggle() {
