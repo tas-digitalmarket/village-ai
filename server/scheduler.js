@@ -36,6 +36,10 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
+function roundNeed(v) {
+  return Math.round(v * 10) / 10;
+}
+
 function parseMinutes(time) {
   const [h = 0, m = 0] = String(time || '00:00').split(':').map(Number);
   return h * 60 + m;
@@ -99,8 +103,8 @@ function applyBodyNeeds(state, worldState, weather, minute) {
   if (heatWork) energy -= 0.05;
   if (hunger > 88) energy -= 0.08;
 
-  energy = clamp(Math.round(energy), 0, 100);
-  hunger = clamp(Math.round(hunger), 0, 100);
+  energy = roundNeed(clamp(energy, 0, 100));
+  hunger = roundNeed(clamp(hunger, 0, 100));
 
   if (hunger > 88) mood = 'hungry';
   else if (energy < 18) mood = 'tired';
@@ -180,8 +184,8 @@ function startTask(item, state, absMinute) {
     position_x: pos.x,
     position_y: 0,
     position_z: pos.z,
-    energy: clamp((state.energy || 80) + actionEnergyDelta(item.action), 0, 100),
-    hunger: clamp((state.hunger || 20) + actionHungerDelta(item.action), 0, 100),
+    energy: roundNeed(clamp((state.energy || 80) + actionEnergyDelta(item.action), 0, 100)),
+    hunger: roundNeed(clamp((state.hunger || 20) + actionHungerDelta(item.action), 0, 100)),
     mood: item.action === 'sleeping' ? 'tired' : item.action === 'eating' ? 'content' : 'focused'
   };
 }
@@ -198,8 +202,8 @@ function startNightSleep(state, absMinute, currentMinute) {
     position_x: pos.x,
     position_y: 0,
     position_z: pos.z,
-    energy: clamp((state.energy || 80) + 2, 0, 100),
-    hunger: clamp((state.hunger || 20) + 1, 0, 100),
+    energy: roundNeed(clamp((state.energy || 80) + 2, 0, 100)),
+    hunger: roundNeed(clamp((state.hunger || 20) + 1, 0, 100)),
     mood: 'tired'
   };
 }
