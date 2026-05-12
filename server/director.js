@@ -6,6 +6,7 @@ const {
   SAMBANOVA_PRIMARY_MODEL,
   SAMBANOVA_FALLBACK_MODEL
 } = require('./config');
+const { searchMemories } = require('./database');
 const { readWorldState } = require('./world-state');
 const { buildBrainSnapshot, buildBrainSystemPrompt, buildConversationFallback } = require('./brain');
 
@@ -64,7 +65,7 @@ function extractJSON(text) {
   return JSON.parse(match[0]);
 }
 
-function normalizeDirectiveResult(parsed, message, state, memories, worldState) {
+function normalizeDirectiveResult(parsed, message, state, memories, worldState, relevantMemories) {
   const directives = Array.isArray(parsed.directives)
     ? parsed.directives
       .filter(d => d && VALID_ACTIONS.includes(d.action) && VALID_LOCATIONS.includes(d.location) && /^\d{2}:\d{2}$/.test(d.time || ''))
@@ -88,7 +89,7 @@ function normalizeDirectiveResult(parsed, message, state, memories, worldState) 
 
   let response = String(parsed.arash_response || '').trim();
   if (!response || !/[\u0600-\u06FF]/.test(response)) {
-    response = buildConversationFallback(message, state, memories, worldState);
+    response = buildConversationFallback(message, state, memories, worldState, relevantMemories);
   }
 
   return {
@@ -124,9 +125,22 @@ async function callProvider(provider, model, messages, temperature = 0.25) {
   return data.choices?.[0]?.message?.content || '';
 }
 
+function memoryQueryForDecision(message, state) {
+  return [
+    message,
+    state.current_action,
+    state.mood,
+    state.weather,
+    state.world_time
+  ].filter(Boolean).join(' ');
+}
+
 async function processDirective(message, state, memories) {
   const worldState = readWorldState();
-  const brain = buildBrainSnapshot(state, memories, worldState);
+  const relevantMemories = searchMemories(memoryQueryForDecision(message, state), 8, {
+    types: ['creator', 'farm', 'survival', 'life']
+  });
+  const brain = buildBrainSnapshot(state, memories, worldState, relevantMemories);
 
   if (isConversationOnly(message)) {
     const systemPrompt = `${buildBrainSystemPrompt(brain, 'conversation')}
@@ -149,7 +163,7 @@ Return only valid JSON with this exact shape:
       for (const model of provider.models.filter(Boolean)) {
         try {
           const text = await callProvider(provider, model, messages, 0.45);
-          return normalizeDirectiveResult(extractJSON(text), message, state, memories, worldState);
+          return normalizeDirectiveResult(extractJSON(text), message, state, memories, worldState, relevantMemories);
         } catch (err) {
           console.error(`[Director:${provider.name}] conversation ${model} failed:`, String(err.message || err).slice(0, 180));
           if (String(err.message || '').includes('HTTP 429')) await sleep(1500);
@@ -158,7 +172,7 @@ Return only valid JSON with this exact shape:
     }
 
     return {
-      arash_response: buildConversationFallback(message, state, memories, worldState),
+      arash_response: buildConversationFallback(message, state, memories, worldState, relevantMemories),
       memory: `Creator talked with Arash: ${message.slice(0, 100)}`,
       directives: [],
       immediate_action: null
@@ -202,7 +216,7 @@ JSON shape:
     for (const model of provider.models.filter(Boolean)) {
       try {
         const text = await callProvider(provider, model, messages);
-        const parsed = normalizeDirectiveResult(extractJSON(text), message, state, memories, worldState);
+        const parsed = normalizeDirectiveResult(extractJSON(text), message, state, memories, worldState, relevantMemories);
         console.log(`[Director:${provider.name}:${model}] creator message parsed`);
         return parsed;
       } catch (err) {
@@ -214,7 +228,7 @@ JSON shape:
   }
 
   return {
-    arash_response: buildConversationFallback(message, state, memories, worldState),
+    arash_response: buildConversationFallback(message, state, memories, worldState, relevantMemories),
     memory: `Creator talked with Arash: ${message.slice(0, 100)}`,
     directives: [],
     immediate_action: null
