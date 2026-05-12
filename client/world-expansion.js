@@ -12,6 +12,9 @@ const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x4a301b, roughness:
 const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8e8a80, roughness: 0.99 });
 const wallMat = new THREE.MeshStandardMaterial({ color: 0xd7ceb8, roughness: 0.96 });
 const roofMat = new THREE.MeshStandardMaterial({ color: 0x75452f, roughness: 0.95 });
+const soilMat = new THREE.MeshStandardMaterial({ color: 0x654021, roughness: 0.99 });
+const cropMat = new THREE.MeshStandardMaterial({ color: 0x3c9a4c, roughness: 0.98 });
+const ripeCropMat = new THREE.MeshStandardMaterial({ color: 0xd5ba4b, roughness: 0.98 });
 const foliageMats = [
   new THREE.MeshStandardMaterial({ color: 0x2f6a35, roughness: 0.99 }),
   new THREE.MeshStandardMaterial({ color: 0x3d7a42, roughness: 0.99 }),
@@ -20,6 +23,7 @@ const foliageMats = [
 const hayMat = new THREE.MeshStandardMaterial({ color: 0xc89b43, roughness: 0.98 });
 const herbMat = new THREE.MeshStandardMaterial({ color: 0x67a85b, roughness: 0.99 });
 const glowOreMat = new THREE.MeshStandardMaterial({ color: 0x6db2d6, roughness: 0.38, metalness: 0.16, emissive: 0x234253, emissiveIntensity: 0.12 });
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fc5d3, transparent: true, opacity: 0.48, roughness: 0.28 });
 
 function addMesh(scene, geometry, material, x, y, z, rotation = [0, 0, 0], scale = [1, 1, 1]) {
   const mesh = new THREE.Mesh(geometry, material);
@@ -130,23 +134,11 @@ function buildBarn(scene, x, y, z) {
   addMesh(scene, new THREE.BoxGeometry(6.35, 3.45, 5.22), new THREE.MeshStandardMaterial({ color: 0x8b5339, roughness: 0.96 }), x, y + 1.92, z);
   addMesh(scene, new THREE.ConeGeometry(4.7, 2.45, 4), roofMat, x, y + 4.85, z, [0, Math.PI / 4, 0]);
   addMesh(scene, new THREE.BoxGeometry(1.62, 2.52, 0.1), darkWoodMat, x, y + 1.28, z + 2.66);
-  [-1.9, 1.9].forEach(dx => addMesh(scene, new THREE.BoxGeometry(1.02, 0.92, 0.08), new THREE.MeshStandardMaterial({ color: 0x9bc2d6, transparent: true, opacity: 0.52 }), x + dx, y + 2.24, z + 2.68));
+  [-1.9, 1.9].forEach(dx => addMesh(scene, new THREE.BoxGeometry(1.02, 0.92, 0.08), glassMat, x + dx, y + 2.24, z + 2.68));
 }
 
 function buildAnimalPen(scene, x, y, z) {
-  const width = 7.2;
-  const depth = 4.8;
-  [-width / 2, 0, width / 2].forEach(dx => {
-    [-depth / 2, depth / 2].forEach(dz => addMesh(scene, new THREE.BoxGeometry(0.14, 1.14, 0.14), woodMat, x + dx, y + 0.57, z + dz));
-  });
-  [-depth / 2, depth / 2].forEach(dz => {
-    addMesh(scene, new THREE.BoxGeometry(width, 0.1, 0.12), woodMat, x, y + 0.78, z + dz);
-    addMesh(scene, new THREE.BoxGeometry(width, 0.1, 0.12), woodMat, x, y + 0.42, z + dz);
-  });
-  [-width / 2, width / 2].forEach(dx => {
-    addMesh(scene, new THREE.BoxGeometry(0.12, 0.1, depth), woodMat, x + dx, y + 0.78, z);
-    addMesh(scene, new THREE.BoxGeometry(0.12, 0.1, depth), woodMat, x + dx, y + 0.42, z);
-  });
+  buildFenceRect(scene, x, z, 7.2, 4.8);
 }
 
 function scatterHay(scene, spots) {
@@ -169,15 +161,30 @@ function buildVillageSpine(scene) {
     { x: 31, z: 20 },
     { x: 37, z: 17 }
   ], 1.25, trailMat, 0.023);
+  addRibbon(scene, [
+    { x: 31, z: 24 },
+    { x: 24, z: 31 },
+    { x: 18, z: 36 }
+  ], 1.08, trailMat, 0.024);
+  addRibbon(scene, [
+    { x: 31, z: 24 },
+    { x: 36, z: 31 },
+    { x: 39, z: 38 }
+  ], 1.08, trailMat, 0.024);
+  addRibbon(scene, [
+    { x: 31, z: 24 },
+    { x: 42, z: 25 },
+    { x: 49, z: 28 }
+  ], 1.08, trailMat, 0.024);
 }
 
 function buildVillageCenter(scene) {
   buildSquare(scene, 31, 0, 24);
   buildMarket(scene, 24.5, 0, 21);
   buildPrayerHouse(scene, 37, 0, 18.5);
-  buildFutureHouse(scene, 24, 0, 31, 0xd0c1a5);
-  buildFutureHouse(scene, 34, 0, 33, 0xd9cbb8);
-  buildFutureHouse(scene, 41, 0, 26, 0xcbb59d);
+  buildHomestead(scene, { x: 18, z: 36, tint: 0xd0c1a5, rotation: -0.14, ripe: false });
+  buildHomestead(scene, { x: 39, z: 39, tint: 0xd9cbb8, rotation: 0.12, ripe: true });
+  buildHomestead(scene, { x: 51, z: 29, tint: 0xcbb59d, rotation: -0.08, ripe: false });
   scatterVillageTrees(scene);
 }
 
@@ -210,17 +217,123 @@ function buildPrayerHouse(scene, x, y, z) {
   addMesh(scene, new THREE.BoxGeometry(1.08, 1.94, 0.1), darkWoodMat, x, y + 1.03, z + 2.3);
 }
 
-function buildFutureHouse(scene, x, y, z, color) {
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.96 });
-  addMesh(scene, new THREE.BoxGeometry(5.0, 0.28, 4.3), stoneMat, x, y + 0.14, z);
-  addMesh(scene, new THREE.BoxGeometry(4.6, 2.92, 3.9), material, x, y + 1.62, z);
-  addMesh(scene, new THREE.ConeGeometry(3.62, 1.86, 4), roofMat, x, y + 4.08, z, [0, Math.PI / 4, 0]);
-  addMesh(scene, new THREE.BoxGeometry(0.95, 1.78, 0.08), darkWoodMat, x, y + 0.94, z + 1.98);
-  [-1.42, 1.42].forEach(dx => addMesh(scene, new THREE.BoxGeometry(0.92, 0.84, 0.08), new THREE.MeshStandardMaterial({ color: 0x9fc5d3, transparent: true, opacity: 0.48 }), x + dx, y + 1.98, z + 2.0));
+function buildHomestead(scene, { x, z, tint, rotation = 0, ripe = false }) {
+  const wallTint = new THREE.MeshStandardMaterial({ color: tint, roughness: 0.96 });
+  const yard = makeGroup(scene, x, 0, z);
+  yard.rotation.y = rotation;
+
+  buildHomesteadHouse(yard, wallTint);
+  buildHomesteadWell(yard, -7.4, 4.8);
+  buildHomesteadBarn(yard, 8.2, 4.2);
+  buildHomesteadWoodpile(yard, -7.2, -3.6);
+  buildHomesteadGarden(yard, -7.0, 8.2);
+  buildHomesteadField(yard, 6.8, 8.1, ripe);
+  buildHomesteadPens(yard, 10.2, -4.2);
+  buildHomesteadFence(yard);
+  buildHomesteadPath(yard);
+}
+
+function buildHomesteadHouse(group, wallTint) {
+  addGroupMesh(group, new THREE.BoxGeometry(7.6, 0.4, 6.6), stoneMat, 0, 0.2, 0);
+  addGroupMesh(group, new THREE.BoxGeometry(7.2, 4.2, 0.12), wallTint, 0, 2.35, 3.0);
+  addGroupMesh(group, new THREE.BoxGeometry(7.2, 4.2, 0.12), wallTint, 0, 2.35, -3.0);
+  addGroupMesh(group, new THREE.BoxGeometry(0.12, 4.2, 6.0), wallTint, 3.6, 2.35, 0);
+  addGroupMesh(group, new THREE.BoxGeometry(0.12, 4.2, 6.0), wallTint, -3.6, 2.35, 0);
+  addGroupMesh(group, new THREE.CylinderGeometry(0, 5.4, 3.2, 4, 1), roofMat, 0, 5.7, 0, [0, Math.PI / 4, 0]);
+  addGroupMesh(group, new THREE.BoxGeometry(1.3, 2.4, 0.12), darkWoodMat, 0, 1.2, 3.08);
+  [-2.4, 2.4].forEach(wx => addGroupMesh(group, new THREE.BoxGeometry(1.3, 1.1, 0.08), glassMat, wx, 2.6, 3.08));
+}
+
+function buildHomesteadWell(group, x, z) {
+  addGroupMesh(group, new THREE.CylinderGeometry(0.88, 0.98, 0.84, 12, 1, true), stoneMat, x, 0.42, z);
+  addGroupMesh(group, new THREE.TorusGeometry(0.94, 0.08, 6, 12), stoneMat, x, 0.84, z, [Math.PI / 2, 0, 0]);
+  addGroupMesh(group, new THREE.CircleGeometry(0.78, 12), waterMat, x, 0.3, z, [-Math.PI / 2, 0, 0]);
+  [-0.68, 0.68].forEach(dx => addGroupMesh(group, new THREE.CylinderGeometry(0.07, 0.08, 1.52, 7), woodMat, x + dx, 1.18, z));
+  addGroupMesh(group, new THREE.BoxGeometry(1.56, 0.14, 0.14), woodMat, x, 1.92, z);
+}
+
+function buildHomesteadBarn(group, x, z) {
+  addGroupMesh(group, new THREE.BoxGeometry(4.9, 0.3, 4.1), stoneMat, x, 0.15, z);
+  addGroupMesh(group, new THREE.BoxGeometry(4.5, 2.72, 3.7), new THREE.MeshStandardMaterial({ color: 0x8f5538, roughness: 0.97 }), x, 1.5, z);
+  addGroupMesh(group, new THREE.ConeGeometry(3.42, 1.8, 4), roofMat, x, 3.82, z, [0, Math.PI / 4, 0]);
+  addGroupMesh(group, new THREE.BoxGeometry(1.02, 1.72, 0.08), darkWoodMat, x, 0.9, z + 1.88);
+}
+
+function buildHomesteadWoodpile(group, x, z) {
+  for (let i = 0; i < 5; i++) {
+    addGroupMesh(group, new THREE.CylinderGeometry(0.12, 0.12, 1.18, 8), woodMat, x + (i % 3) * 0.42, 0.22 + Math.floor(i / 3) * 0.2, z + Math.floor(i / 3) * 0.28, [Math.PI / 2, 0, 0]);
+  }
+}
+
+function buildHomesteadGarden(group, x, z) {
+  addGroupMesh(group, new THREE.BoxGeometry(5.8, 0.18, 3.8), soilMat, x, 0.09, z);
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 4; col++) {
+      const px = x - 2.1 + col * 1.35;
+      const pz = z - 0.9 + row * 1.5;
+      addGroupMesh(group, new THREE.CylinderGeometry(0.05, 0.07, 0.52, 6), cropMat, px, 0.44, pz);
+      addGroupMesh(group, new THREE.SphereGeometry(0.18, 6, 5), cropMat, px, 0.78, pz);
+    }
+  }
+}
+
+function buildHomesteadField(group, x, z, ripe) {
+  const activeCropMat = ripe ? ripeCropMat : cropMat;
+  addGroupMesh(group, new THREE.BoxGeometry(7.6, 0.18, 5.2), soilMat, x, 0.09, z);
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 5; col++) {
+      const px = x - 2.8 + col * 1.35;
+      const pz = z - 1.6 + row * 1.55;
+      addGroupMesh(group, new THREE.CylinderGeometry(0.05, 0.07, 0.58, 6), activeCropMat, px, 0.48, pz);
+      addGroupMesh(group, new THREE.SphereGeometry(0.19, 6, 5), activeCropMat, px, 0.86, pz);
+    }
+  }
+}
+
+function buildHomesteadPens(group, x, z) {
+  buildFenceRectGroup(group, x, z, 4.8, 3.8);
+  addGroupMesh(group, new THREE.SphereGeometry(0.58, 8, 6), hayMat, x - 1.0, 0.36, z, [0, 0, 0], [1.12, 0.7, 1]);
+}
+
+function buildHomesteadFence(group) {
+  buildFenceRectGroup(group, 0, 2.7, 26, 22);
+}
+
+function buildHomesteadPath(group) {
+  addGroupMesh(group, new THREE.BoxGeometry(1.7, 0.03, 9.8), trailMat, 0, 0.03, 8.2);
+  addGroupMesh(group, new THREE.BoxGeometry(8.8, 0.03, 1.44), trailMat, 4.4, 0.03, 4.0);
+}
+
+function buildFenceRect(scene, x, z, width, depth) {
+  const fake = makeGroup(scene, 0, 0, 0);
+  buildFenceRectGroup(fake, x, z, width, depth);
+}
+
+function buildFenceRectGroup(group, x, z, width, depth) {
+  const left = x - width / 2;
+  const right = x + width / 2;
+  const top = z - depth / 2;
+  const bottom = z + depth / 2;
+  for (let px = left; px <= right + 0.01; px += 3) {
+    addGroupMesh(group, new THREE.BoxGeometry(0.14, 1.06, 0.14), woodMat, px, 0.53, top);
+    addGroupMesh(group, new THREE.BoxGeometry(0.14, 1.06, 0.14), woodMat, px, 0.53, bottom);
+  }
+  for (let pz = top; pz <= bottom + 0.01; pz += 3) {
+    addGroupMesh(group, new THREE.BoxGeometry(0.14, 1.06, 0.14), woodMat, left, 0.53, pz);
+    addGroupMesh(group, new THREE.BoxGeometry(0.14, 1.06, 0.14), woodMat, right, 0.53, pz);
+  }
+  addGroupMesh(group, new THREE.BoxGeometry(width, 0.1, 0.1), woodMat, x, 0.68, top);
+  addGroupMesh(group, new THREE.BoxGeometry(width, 0.1, 0.1), woodMat, x, 0.34, top);
+  addGroupMesh(group, new THREE.BoxGeometry(width, 0.1, 0.1), woodMat, x, 0.68, bottom);
+  addGroupMesh(group, new THREE.BoxGeometry(width, 0.1, 0.1), woodMat, x, 0.34, bottom);
+  addGroupMesh(group, new THREE.BoxGeometry(0.1, 0.1, depth), woodMat, left, 0.68, z);
+  addGroupMesh(group, new THREE.BoxGeometry(0.1, 0.1, depth), woodMat, left, 0.34, z);
+  addGroupMesh(group, new THREE.BoxGeometry(0.1, 0.1, depth), woodMat, right, 0.68, z);
+  addGroupMesh(group, new THREE.BoxGeometry(0.1, 0.1, depth), woodMat, right, 0.34, z);
 }
 
 function scatterVillageTrees(scene) {
-  [[20, 25], [28, 37], [43, 34], [45, 20], [18, 34], [40, 39]].forEach(([x, z], idx) => buildTree(scene, x, 0, z, 0.88 + idx * 0.05, foliageMats[idx % foliageMats.length]));
+  [[20, 25], [28, 37], [43, 34], [45, 20], [18, 34], [40, 39], [54, 22], [14, 42]].forEach(([x, z], idx) => buildTree(scene, x, 0, z, 0.88 + idx * 0.05, foliageMats[idx % foliageMats.length]));
 }
 
 function buildRemoteRiverlands(scene) {
@@ -345,7 +458,7 @@ function buildAbandonedHouse(scene, x, y, z) {
   addMesh(scene, new THREE.BoxGeometry(4.6, 2.72, 3.9), new THREE.MeshStandardMaterial({ color: 0xa79a88, roughness: 0.99 }), x, y + 1.48, z);
   addMesh(scene, new THREE.ConeGeometry(3.62, 1.74, 4), new THREE.MeshStandardMaterial({ color: 0x5e4335, roughness: 0.99 }), x, y + 3.72, z, [0, Math.PI / 4, 0]);
   addMesh(scene, new THREE.BoxGeometry(1.02, 1.78, 0.08), darkWoodMat, x + 0.3, y + 0.94, z + 1.98, [0, 0.08, 0]);
-  addMesh(scene, new THREE.BoxGeometry(0.98, 0.88, 0.08), new THREE.MeshStandardMaterial({ color: 0x6e8792, transparent: true, opacity: 0.34 }), x - 1.24, y + 1.92, z + 2.0, [0, -0.14, 0]);
+  addMesh(scene, new THREE.BoxGeometry(0.98, 0.88, 0.08), glassMat, x - 1.24, y + 1.92, z + 2.0, [0, -0.14, 0]);
 }
 
 function buildFuturePass(scene) {
