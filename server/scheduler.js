@@ -4,7 +4,7 @@ const {
   removeDirective, getDirectives, WORLD_DAY_REAL_MINUTES
 } = require('./database');
 const { LOCATIONS } = require('./ai');
-const { updateAidaRoutine } = require('./aida');
+const { updateAidaRoutine, buildAidaSocialDialogue } = require('./aida');
 const { generateWeather } = require('./weather');
 const { readWorldState, applyWorldDrift, applyActionConsequences } = require('./world-state');
 const { buildRiskProfile, chooseRiskTask } = require('./risk-model');
@@ -176,7 +176,7 @@ async function runMinutePulse(broadcast) {
     let riskState = buildRiskProfile(nextState, worldState, weather, minute);
     nextState = ensureDailyPlan(nextState, worldState, riskState);
     let thought = null;
-    const aidaState = updateAidaRoutine(worldTime);
+    let aidaState = updateAidaRoutine(worldTime);
 
     logWeather(weather, worldTime);
     if (minute <= 1) firedKeys.clear();
@@ -241,6 +241,7 @@ async function runMinutePulse(broadcast) {
     riskState = buildRiskProfile(nextState, worldState, weather, minute);
     nextState.risk_state = riskState;
     saveState(nextState);
+    aidaState = { ...aidaState, social_dialogue: buildAidaSocialDialogue(nextState, aidaState, worldTime) };
 
     const upcomingSchedule = buildUpcomingSchedule(getDirectives(), worldTime, weather);
     const { OPENROUTER_API_KEY, SAMBANOVA_API_KEY } = require('./config');
@@ -256,6 +257,7 @@ async function runMinutePulse(broadcast) {
         memories: getMemories(5),
         upcomingSchedule,
         ida_state: aidaState,
+        social_dialogue: aidaState.social_dialogue,
         apiKeyMissing: !hasAiKey
       }
     });
