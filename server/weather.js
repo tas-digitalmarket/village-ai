@@ -1,10 +1,10 @@
-// Weighted random weather system
+// Weighted random weather system. One scheduler tick is one world minute.
 const WEATHER_POOL = [
-  { type: 'sunny',  weight: 0.45 },
+  { type: 'sunny', weight: 0.45 },
   { type: 'cloudy', weight: 0.25 },
-  { type: 'rainy',  weight: 0.15 },
-  { type: 'foggy',  weight: 0.08 },
-  { type: 'windy',  weight: 0.05 },
+  { type: 'rainy', weight: 0.15 },
+  { type: 'foggy', weight: 0.08 },
+  { type: 'windy', weight: 0.05 },
   { type: 'stormy', weight: 0.02 }
 ];
 
@@ -21,17 +21,20 @@ function pickWeather() {
   return 'sunny';
 }
 
-function generateWeather(tick) {
+function generateWeather() {
   if (weatherTicksRemaining > 0) {
     weatherTicksRemaining--;
     return currentWeather;
   }
+
   currentWeather = pickWeather();
-  weatherTicksRemaining = Math.floor(Math.random() * 6) + 1; // 1–6 ticks
-  console.log(`[Weather] → ${currentWeather} (lasts ${weatherTicksRemaining + 1} ticks)`);
+  weatherTicksRemaining = Math.floor(Math.random() * 121) + 60; // 60-180 world minutes
+  console.log(`[Weather] -> ${currentWeather} (lasts ${weatherTicksRemaining + 1} world minutes)`);
   return currentWeather;
 }
 
-function getCurrentWeather() { return currentWeather; }
+function getCurrentWeather() {
+  return currentWeather;
+}
 
 module.exports = { generateWeather, getCurrentWeather };
