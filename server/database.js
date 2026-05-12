@@ -113,7 +113,7 @@ function saveState(newState) {
   db.set('agent_state', {
     ...newState,
     time_model_version: TIME_MODEL_VERSION,
-    timestamp: new Date().toISOString()
+    timestamp: newState.timestamp || new Date().toISOString()
   }).write();
 }
 
