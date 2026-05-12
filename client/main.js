@@ -6,13 +6,12 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildWorld } from './world.js?v=7';
-import { buildWorldExpansion } from './world-expansion.js?v=1';
+import { buildWorldExpansion } from './world-expansion.js?v=2';
 import { Villager } from './character.js?v=7';
 import { WeatherFX } from './weather-fx.js?v=7';
 import { HUD } from './hud.js?v=7';
 import { CreatorPanel } from './creator.js?v=7';
 
-// ── Renderer ───────────────────────────────────────────────────
 const canvas = document.getElementById('world-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -23,24 +22,24 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-// ── Scene ────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f172a);
-scene.fog = new THREE.FogExp2(0x0f172a, 0.0075);
+scene.fog = new THREE.FogExp2(0x0f172a, 0.0068);
 
-// ── Camera ───────────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 500);
-camera.position.set(18, 20, 18);
+camera.position.set(28, 30, 30);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.enablePan = true;
+controls.screenSpacePanning = false;
 controls.dampingFactor = 0.05;
-controls.maxPolarAngle = Math.PI / 2.05;
+controls.maxPolarAngle = Math.PI / 2.03;
 controls.minDistance = 4;
-controls.maxDistance = 110;
-controls.target.set(0, 0, 2);
+controls.maxDistance = 150;
+controls.target.set(9, 0, 8);
+controls.update();
 
-// ── Lights ───────────────────────────────────────────────────────
 const hemiLight = new THREE.HemisphereLight(0xc8e8ff, 0x8a6040, 0.6);
 scene.add(hemiLight);
 
@@ -59,7 +58,6 @@ const moonLight = new THREE.DirectionalLight(0x4466aa, 0.0);
 moonLight.position.set(-20, 25, -10);
 scene.add(moonLight);
 
-// ── Realistic Bedside Lamp inside house ──────────────────────────
 const nightLamp = new THREE.PointLight(0xff9944, 0.0, 9, 1.6);
 nightLamp.position.set(-3.4, 2.0, -10.5);
 scene.add(nightLamp);
@@ -109,7 +107,6 @@ lampGroup.add(bulbMesh);
 
 scene.add(lampGroup);
 
-// ── Post-processing ─────────────────────────────────────────────
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 
@@ -120,7 +117,6 @@ const bloom = new UnrealBloomPass(
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
-// ── Components ──────────────────────────────────────────────────
 buildWorld(scene);
 buildWorldExpansion(scene);
 const villager = new Villager(scene);
@@ -129,7 +125,6 @@ const hud = new HUD();
 window.hud = hud;
 const creator = new CreatorPanel((directives) => hud.updateSchedule(directives));
 
-// ── Sky / Day-Night Helpers ─────────────────────────────────────
 let worldHour = 6;
 
 const SKY_PRESETS = {
@@ -274,11 +269,26 @@ setTimeout(() => { if (!wsConnected) fetchStateFallback(); }, 4000);
 setInterval(() => { if (!wsConnected) { fetchStateFallback(); fetchDirectivesFallback(); } }, 10000);
 
 let isInterior = false;
+const exteriorCamera = new THREE.Vector3(28, 30, 30);
+const exteriorTarget = new THREE.Vector3(9, 0, 8);
+const interiorCamera = new THREE.Vector3(3.5, 3.5, -4);
+const interiorTarget = new THREE.Vector3(0, 1.2, -8);
 const viewBtn = document.getElementById('view-toggle');
 if (viewBtn) {
   viewBtn.onclick = () => {
     isInterior = !isInterior;
-    viewBtn.innerHTML = isInterior ? '<span>🌳</span> View Farm' : '<span>🏠</span> View Inside';
+    if (isInterior) {
+      camera.position.copy(interiorCamera);
+      controls.target.copy(interiorTarget);
+      controls.maxDistance = 10;
+      viewBtn.innerHTML = '<span>🌳</span> View Farm';
+    } else {
+      camera.position.copy(exteriorCamera);
+      controls.target.copy(exteriorTarget);
+      controls.maxDistance = 150;
+      viewBtn.innerHTML = '<span>🏠</span> View Inside';
+    }
+    controls.update();
   };
 }
 
@@ -300,21 +310,6 @@ function animate() {
   controls.update();
   villager.update(delta, clock.getElapsedTime());
   weatherFX.update(delta, clock.getElapsedTime());
-
-  const vPos = villager.currentPos;
-  const inHouse = vPos.z < -5.5 && Math.abs(vPos.x) < 3.5;
-  const showInterior = isInterior || inHouse;
-
-  if (showInterior) {
-    controls.target.lerp(new THREE.Vector3(0, 1.2, -8), 0.08);
-    if (camera.position.distanceTo(new THREE.Vector3(0, 2, -5)) > 5) {
-      camera.position.lerp(new THREE.Vector3(3.5, 3.5, -4), 0.04);
-    }
-    controls.maxDistance = 10;
-  } else {
-    controls.target.lerp(new THREE.Vector3(vPos.x, 0.5, vPos.z), 0.05);
-    controls.maxDistance = 110;
-  }
 
   worldHour += delta * (0.5 / (5 * 60));
   if (worldHour >= 24) worldHour = 0;
