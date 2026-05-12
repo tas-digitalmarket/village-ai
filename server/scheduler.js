@@ -5,7 +5,7 @@ const {
 } = require('./database');
 const { LOCATIONS } = require('./ai');
 const { generateWeather } = require('./weather');
-const { readWorldState, updateWorldStateForTick } = require('./world-state');
+const { readWorldState, applyWorldDrift, applyActionConsequences } = require('./world-state');
 
 const WORLD_MINUTE_REAL_MS = 2000;
 const DEFAULT_TASK_DURATION_MINUTES = 30;
@@ -228,6 +228,7 @@ function startTask(item, state, absMinute) {
     active_task_label: item.label || item.action || 'Task',
     active_task_source: item.source || 'routine',
     active_task_reason: item.reason || null,
+    active_task_location: location,
     task_started_at_abs: absMinute,
     task_ends_at_abs: absMinute + duration,
     position_x: pos.x,
@@ -247,6 +248,7 @@ function startNightSleep(state, absMinute, currentMinute) {
     active_task_label: 'Sleep',
     active_task_source: 'routine',
     active_task_reason: 'night sleep',
+    active_task_location: 'bed',
     task_started_at_abs: absMinute,
     task_ends_at_abs: nextWakeAbs(absMinute, currentMinute),
     position_x: pos.x,
@@ -265,6 +267,7 @@ function idleState(state) {
     active_task_label: null,
     active_task_source: null,
     active_task_reason: null,
+    active_task_location: null,
     task_started_at_abs: null,
     task_ends_at_abs: null,
     mood: state.mood || 'content'
@@ -275,9 +278,29 @@ function maybeUpdateWorldDrift(state, worldState, weather, absMinute) {
   const last = Number(state.last_world_drift_abs || 0);
   if (last && absMinute - last < WORLD_DRIFT_MINUTES) return { worldState, lastWorldDriftAbs: last };
   return {
-    worldState: updateWorldStateForTick(worldState, { action: 'idle', target_location: 'path_center' }, weather),
+    worldState: applyWorldDrift(worldState, weather),
     lastWorldDriftAbs: absMinute
   };
+}
+
+function completeActiveTask(state, worldState, weather, worldTime) {
+  const action = state.current_action;
+  const label = state.active_task_label || action;
+  const location = state.active_task_location || 'path_center';
+  if (!action || action === 'idle') return { state: idleState(state), worldState, thought: null };
+
+  const result = applyActionConsequences(worldState, { action, target_location: location }, weather);
+  const notes = result.outcome.notes.length ? ` (${result.outcome.notes.join(', ')})` : '';
+  const thought = result.outcome.success
+    ? `کار ${label} تمام شد و اثرش را در جهان گذاشت.`
+    : `کار ${label} کامل انجام نشد؛ شرایط کافی نبود.`;
+
+  addMemory(`آرش در ساعت ${worldTime} کار ${label} را تمام کرد.${notes}`, {
+    type: 'life',
+    importance: result.outcome.success ? 6 : 7
+  });
+
+  return { state: idleState(state), worldState: result.worldState, thought };
 }
 
 async function runMinutePulse(broadcast) {
@@ -305,8 +328,10 @@ async function runMinutePulse(broadcast) {
     }
 
     if (nextState.current_action !== 'idle' && nextState.task_ends_at_abs && abs >= Number(nextState.task_ends_at_abs)) {
-      nextState = idleState(nextState);
-      thought = 'کارم تمام شد؛ حالا اول می بینم چه کاری واقعا لازم است.';
+      const completed = completeActiveTask(nextState, worldState, weather, worldTime);
+      nextState = completed.state;
+      worldState = completed.worldState;
+      thought = completed.thought || 'کارم تمام شد؛ حالا اول می بینم چه کاری واقعا لازم است.';
     }
 
     if (isNightMinute(minute) && nextState.current_action !== 'sleeping') {
@@ -328,12 +353,8 @@ async function runMinutePulse(broadcast) {
       const task = criticalNeed || creatorTask || needTask || routineTask;
 
       if (task) {
-        firedKeys.add(taskKey(day, task));
+        if (task.source !== 'need') firedKeys.add(taskKey(day, task));
         nextState = startTask(task, nextState, abs);
-        worldState = updateWorldStateForTick(worldState, {
-          action: task.action,
-          target_location: task.location || 'path_center'
-        }, weather);
         thought = task.source === 'creator'
           ? 'زمان دستور خالق رسیده؛ انجامش می دهم.'
           : task.source === 'need'
