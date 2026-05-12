@@ -42,18 +42,43 @@ function pct(value) {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+function text(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function createMeter(label, value, tone = 'primary') {
   const safe = pct(value);
   return `
     <div class="world-meter world-meter--${tone}">
-      <div class="world-meter-head"><span>${label}</span><strong>${safe}%</strong></div>
+      <div class="world-meter-head"><span>${text(label)}</span><strong>${safe}%</strong></div>
       <div class="world-meter-track"><div class="world-meter-fill" style="width:${safe}%"></div></div>
     </div>
   `;
 }
 
 function createStat(label, value) {
-  return `<div class="world-stat"><span>${label}</span><strong>${value}</strong></div>`;
+  return `<div class="world-stat"><span>${text(label)}</span><strong>${text(value)}</strong></div>`;
+}
+
+function createMiniList(items, emptyText) {
+  if (!items || !items.length) return `<div class="world-empty">${text(emptyText)}</div>`;
+  return `<ul class="schedule-list compact-list">${items.map(item => `<li>${item}</li>`).join('')}</ul>`;
+}
+
+function goalLine(goal) {
+  const done = (goal.steps || []).filter(s => s.done).length;
+  const total = (goal.steps || []).length || 1;
+  const status = goal.status === 'done' ? 'done' : `${done}/${total}`;
+  return `<strong>${text(status)}</strong> ${text(goal.title)}`;
+}
+
+function skillLine(name, skill) {
+  return `${text(name)} <strong>L${text(skill?.level || 1)}</strong>`;
 }
 
 export class HUD {
@@ -119,7 +144,7 @@ export class HUD {
     if (this.$mood && mood) this.$mood.textContent = `${MOOD_ICONS[mood] || '😊'} ${mood}`;
 
     const icon = ACTION_ICONS[current_action] || '❓';
-    const label = ACTION_LABELS[current_action] || current_action || 'idle';
+    const label = data.active_task_label || ACTION_LABELS[current_action] || current_action || 'idle';
     if (this.$taskIcon) this.$taskIcon.textContent = icon;
     if (this.$taskLabel) this.$taskLabel.textContent = label;
 
@@ -139,10 +164,11 @@ export class HUD {
       });
     }
 
-    if (world_state) this.updateWorldState(world_state);
+    if (world_state) this.updateWorldState(data);
   }
 
-  updateWorldState(world) {
+  updateWorldState(data) {
+    const world = data.world_state;
     if (!this.$worldList || !world) return;
     const east = world.fields?.east || {};
     const west = world.fields?.west || {};
@@ -151,8 +177,28 @@ export class HUD {
     const house = world.house || {};
     const motorcycle = world.motorcycle || {};
     const animals = world.animals || {};
+    const risk = data.risk_state || {};
+    const goals = data.daily_plan?.goals || [];
+    const skills = data.skills || {};
+    const events = data.world_events || [];
+
+    const riskTone = risk.mode === 'critical' || risk.mode === 'urgent' ? 'warn' : risk.mode === 'watching' ? 'ready' : 'primary';
+    const goalItems = goals.slice(0, 4).map(goalLine);
+    const skillItems = [
+      skillLine('Farming', skills.farming),
+      skillLine('Animals', skills.animals),
+      skillLine('Repair', skills.repair),
+      skillLine('Survival', skills.survival)
+    ];
+    const eventItems = events.slice(0, 3).map(e => `<strong>${text(e.title)}</strong> ${text(e.note)}`);
 
     this.$worldList.innerHTML = `
+      <div class="world-block">
+        <div class="world-block-title">Today</div>
+        <div class="world-stat"><span>Risk</span><strong>${text(risk.mode || 'stable')}</strong></div>
+        ${risk.summary ? `<div class="world-meter world-meter--${riskTone}"><div class="world-meter-head"><span>${text(risk.summary)}</span><strong>${pct(risk.overall)}%</strong></div><div class="world-meter-track"><div class="world-meter-fill" style="width:${pct(risk.overall)}%"></div></div></div>` : ''}
+        ${createMiniList(goalItems, 'No daily goals yet')}
+      </div>
       <div class="world-block">
         <div class="world-block-title">East Field</div>
         ${createMeter('Moisture', east.moisture, east.moisture < 30 ? 'warn' : 'primary')}
@@ -172,6 +218,14 @@ export class HUD {
         ${createStat('Motor', `${pct(motorcycle.condition)}%`)}
         ${createStat('Fuel', `${pct(motorcycle.fuel)}%`)}
         ${createStat('Animals', `${pct(animals.health)}%`)}
+      </div>
+      <div class="world-block">
+        <div class="world-block-title">Skills</div>
+        ${createMiniList(skillItems, 'No skill progress yet')}
+      </div>
+      <div class="world-block">
+        <div class="world-block-title">Recent Events</div>
+        ${createMiniList(eventItems, 'No notable event yet')}
       </div>
     `;
   }
@@ -199,10 +253,10 @@ export class HUD {
         : '<span class="sched-source-icon">routine</span>';
       li.innerHTML = `
         <span class="sched-source-icon">${sourceIcon}</span>
-        <span class="sched-time">${d.time}</span>
-        <span class="sched-label">${d.label || d.action}</span>
+        <span class="sched-time">${text(d.time)}</span>
+        <span class="sched-label">${text(d.label || d.action)}</span>
         ${badge}
-        ${isCreator ? `<button class="sched-del" data-id="${d.id}" title="Remove">✕</button>` : ''}
+        ${isCreator ? `<button class="sched-del" data-id="${text(d.id)}" title="Remove">✕</button>` : ''}
       `;
 
       if (isCreator) {
