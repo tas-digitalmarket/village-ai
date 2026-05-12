@@ -16,9 +16,9 @@ const WORLD_MINUTES_PER_REAL_MS = 1440 / (WORLD_DAY_REAL_MINUTES * 60 * 1000);
 let db;
 
 const STOP_WORDS = new Set([
-  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'you', 'your', 'arash', 'creator',
+  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'you', 'your', 'arash', 'aida', 'creator',
   'من', 'تو', 'او', 'ما', 'شما', 'آن', 'این', 'یک', 'در', 'به', 'از', 'را', 'با', 'برای',
-  'که', 'است', 'هست', 'کرد', 'شد', 'می', 'های', 'هایش', 'خالق', 'آرش'
+  'که', 'است', 'هست', 'کرد', 'شد', 'می', 'های', 'هایش', 'خالق', 'آرش', 'آیدا'
 ]);
 
 function advanceTime(currentTime, minutesToAdd) {
@@ -51,10 +51,29 @@ function getDefaultState() {
   };
 }
 
+function getDefaultAidaState() {
+  return {
+    name: 'Aida',
+    role: 'herbalist and animal keeper',
+    position_x: 18,
+    position_y: 0,
+    position_z: 36,
+    energy: 84,
+    hunger: 24,
+    current_action: 'watering_garden',
+    active_task_label: 'Checking her garden',
+    mood: 'curious',
+    relationship_arash: 28,
+    relationship_creator: 55,
+    home_label: 'southern homestead',
+    timestamp: new Date().toISOString()
+  };
+}
+
 function extractKeywords(text, limit = 14) {
   const words = String(text || '')
     .toLowerCase()
-    .replace(/[.,!?;:()\[\]{}"'،؛؟«»]/g, ' ')
+    .replace(/[.,!?;:()\[\]{}\"'،؛؟«»]/g, ' ')
     .split(/\s+/)
     .map(w => w.trim())
     .filter(w => w.length >= 3 && !STOP_WORDS.has(w));
@@ -65,18 +84,19 @@ function extractKeywords(text, limit = 14) {
 function inferMemoryType(content) {
   const text = String(content || '').toLowerCase();
   if (/creator|خالق|دستور|گفت|asked|told|command/.test(text)) return 'creator';
+  if (/aida|آیدا|arash|آرش|relationship|رابطه|دید|کمک/.test(text)) return 'social';
   if (/eat|food|غذا|خورد|گرسنگ/.test(text)) return 'survival';
   if (/sleep|خواب|استراحت/.test(text)) return 'survival';
-  if (/field|crop|farm|مزرعه|زمین|محصول|آبیاری/.test(text)) return 'farm';
+  if (/field|crop|farm|مزرعه|زمین|محصول|آبیاری|باغچه|دام/.test(text)) return 'farm';
   if (/weather|rain|storm|هوا|باران|طوفان/.test(text)) return 'world';
   return 'life';
 }
 
 function inferMemoryImportance(content, type) {
   const text = String(content || '').toLowerCase();
-  let score = type === 'creator' ? 8 : type === 'survival' ? 7 : 5;
+  let score = type === 'creator' ? 8 : type === 'survival' ? 7 : type === 'social' ? 7 : 5;
   if (/always|never|هر روز|روزانه|همیشه|هرگز|مهم|remember|یادت/.test(text)) score += 2;
-  if (/danger|storm|طوفان|خطر|گرسنگ|خسته|کمبود/.test(text)) score += 1;
+  if (/danger|storm|طوفان|خطر|گرسنگ|خسته|کمبود|رابطه|اعتماد/.test(text)) score += 1;
   return Math.max(1, Math.min(10, score));
 }
 
@@ -95,15 +115,15 @@ function normalizeMemory(entry) {
   };
 }
 
-function migrateMemoriesIfNeeded() {
-  const all = db.get('memories').value() || [];
+function migrateMemoriesIfNeeded(key = 'memories') {
+  const all = db.get(key).value() || [];
   let changed = false;
   const normalized = all.map(entry => {
     if (entry && entry.id && entry.keywords && entry.type) return entry;
     changed = true;
     return normalizeMemory(entry);
   });
-  if (changed) db.set('memories', normalized).write();
+  if (changed) db.set(key, normalized).write();
 }
 
 function migrateTimeModelIfNeeded() {
@@ -151,19 +171,27 @@ function initDatabase() {
 
   db.defaults({
     agent_state: getDefaultState(),
+    aida_state: getDefaultAidaState(),
     memories: [
       normalizeMemory({ content: 'Arash woke up at dawn and looked at the sky', timestamp: new Date().toISOString(), type: 'life' }),
       normalizeMemory({ content: 'Had a simple breakfast of bread and cheese', timestamp: new Date().toISOString(), type: 'survival' }),
       normalizeMemory({ content: 'Went to the farm to check on the crops', timestamp: new Date().toISOString(), type: 'farm' })
     ],
+    aida_memories: [
+      normalizeMemory({ content: 'Aida arrived in the village with seeds, herbs, and a quiet curiosity about her new neighbors.', timestamp: new Date().toISOString(), type: 'life' }),
+      normalizeMemory({ content: 'Aida knows Arash lives nearby and may become an important neighbor over time.', timestamp: new Date().toISOString(), type: 'social' })
+    ],
     directives: [],
     fired_directive_ids: [],
     creator_messages: [],
+    aida_messages: [],
     weather_log: []
   }).write();
 
+  if (!db.get('aida_state').value()) db.set('aida_state', getDefaultAidaState()).write();
   migrateTimeModelIfNeeded();
-  migrateMemoriesIfNeeded();
+  migrateMemoriesIfNeeded('memories');
+  migrateMemoriesIfNeeded('aida_memories');
   console.log('[DB] Initialized:', DB_FILE);
 }
 
@@ -179,8 +207,21 @@ function saveState(newState) {
   }).write();
 }
 
+function getAidaState() {
+  return db.get('aida_state').value() || getDefaultAidaState();
+}
+
+function saveAidaState(newState) {
+  db.set('aida_state', { ...newState, timestamp: newState.timestamp || new Date().toISOString() }).write();
+}
+
 function getMemories(limit = 10) {
   const all = db.get('memories').value() || [];
+  return all.slice(-limit).reverse();
+}
+
+function getAidaMemories(limit = 10) {
+  const all = db.get('aida_memories').value() || [];
   return all.slice(-limit).reverse();
 }
 
@@ -201,8 +242,24 @@ function addMemory(content, meta = {}) {
   return entry;
 }
 
-function searchMemories(query, limit = 8, options = {}) {
-  const all = db.get('memories').value() || [];
+function addAidaMemory(content, meta = {}) {
+  const state = db.get('agent_state').value() || {};
+  const entry = normalizeMemory({
+    content,
+    world_day: meta.world_day ?? state.day ?? null,
+    world_time: meta.world_time ?? state.world_time ?? null,
+    type: meta.type,
+    importance: meta.importance,
+    keywords: meta.keywords
+  });
+  db.get('aida_memories').push(entry).write();
+  const all = db.get('aida_memories').value();
+  if (all.length > 300) db.set('aida_memories', all.slice(-300)).write();
+  return entry;
+}
+
+function searchMemoryList(key, query, limit = 8, options = {}) {
+  const all = db.get(key).value() || [];
   const qKeywords = extractKeywords(query, 20);
   const qSet = new Set(qKeywords);
   const now = Date.now();
@@ -224,6 +281,14 @@ function searchMemories(query, limit = 8, options = {}) {
     .filter(memory => memory.score > 3 || qKeywords.length === 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
+}
+
+function searchMemories(query, limit = 8, options = {}) {
+  return searchMemoryList('memories', query, limit, options);
+}
+
+function searchAidaMemories(query, limit = 8, options = {}) {
+  return searchMemoryList('aida_memories', query, limit, options);
 }
 
 function getDirectives() {
@@ -288,6 +353,17 @@ function addCreatorMessage(role, content) {
   if (all.length > 200) db.set('creator_messages', all.slice(-200)).write();
 }
 
+function getAidaMessages(limit = 20) {
+  const all = db.get('aida_messages').value() || [];
+  return all.slice(-limit);
+}
+
+function addAidaMessage(role, content) {
+  db.get('aida_messages').push({ role, content, timestamp: new Date().toISOString() }).write();
+  const all = db.get('aida_messages').value();
+  if (all.length > 200) db.set('aida_messages', all.slice(-200)).write();
+}
+
 function logWeather(weather, worldTime) {
   db.get('weather_log')
     .push({ weather, world_time: worldTime, timestamp: new Date().toISOString() })
@@ -299,10 +375,13 @@ function logWeather(weather, worldTime) {
 module.exports = {
   initDatabase,
   getState, saveState,
+  getAidaState, saveAidaState,
   getMemories, addMemory, searchMemories,
+  getAidaMemories, addAidaMemory, searchAidaMemories,
   getDirectives, addDirective, removeDirective, clearAllDirectives, findDirectiveForTime,
   getFiredDirectiveIds, addFiredDirectiveId, clearFiredDirectiveIds,
   getCreatorMessages, addCreatorMessage,
+  getAidaMessages, addAidaMessage,
   logWeather,
   WORLD_DAY_REAL_MINUTES
 };
