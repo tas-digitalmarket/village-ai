@@ -6,6 +6,8 @@ const {
   SAMBANOVA_PRIMARY_MODEL,
   SAMBANOVA_FALLBACK_MODEL
 } = require('./config');
+const { readWorldState } = require('./world-state');
+const { buildBrainSnapshot, buildBrainSystemPrompt } = require('./brain');
 
 const LOCATIONS = {
   home:         { x: 0,    z: -5.5  },
@@ -73,6 +75,18 @@ function clampNumber(value, fallback, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+function chooseFallbackLocation(action, weather) {
+  if (weather === 'rainy' || weather === 'stormy') return 'home';
+  if (action === 'sleeping') return 'bed';
+  if (action === 'eating') return 'table';
+  if (action === 'watering_crops' || action === 'harvesting') return 'east_field';
+  if (action === 'tending_crops') return 'west_field';
+  if (action === 'chopping_wood') return 'wood_stump';
+  if (action === 'fishing') return 'fishing_spot';
+  if (action === 'checking_motorcycle') return 'motorcycle';
+  return 'path_center';
+}
+
 function normalizeDecision(parsed, state, weather, timeStr) {
   const action = VALID_ACTIONS.includes(parsed.action) ? parsed.action : 'idle';
   const targetLocation = LOCATIONS[parsed.target_location] ? parsed.target_location : chooseFallbackLocation(action, weather);
@@ -90,18 +104,6 @@ function normalizeDecision(parsed, state, weather, timeStr) {
   };
 }
 
-function chooseFallbackLocation(action, weather) {
-  if (weather === 'rainy' || weather === 'stormy') return 'home';
-  if (action === 'sleeping') return 'bed';
-  if (action === 'eating') return 'table';
-  if (action === 'watering_crops' || action === 'harvesting') return 'east_field';
-  if (action === 'tending_crops') return 'west_field';
-  if (action === 'chopping_wood') return 'wood_stump';
-  if (action === 'fishing') return 'fishing_spot';
-  if (action === 'checking_motorcycle') return 'motorcycle';
-  return 'path_center';
-}
-
 async function callProvider(provider, model, messages, temperature = 0.35) {
   const response = await fetch(provider.endpoint, {
     method: 'POST',
@@ -115,7 +117,7 @@ async function callProvider(provider, model, messages, temperature = 0.35) {
       messages,
       temperature,
       top_p: 0.85,
-      max_tokens: 650
+      max_tokens: 750
     })
   });
 
@@ -143,64 +145,40 @@ async function askAI(state, memories, weather, overrideTime, upcomingSchedule) {
 
 async function callAI(state, memories, weather, overrideTime, upcomingSchedule) {
   const timeStr = overrideTime || state.world_time || '08:00';
-  const memText = memories.slice(0, 7).map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'هنوز خاطره مهمی ثبت نشده است.';
+  const worldState = readWorldState();
+  const brain = buildBrainSnapshot({ ...state, weather, world_time: timeStr }, memories, worldState);
   const schedText = upcomingSchedule && upcomingSchedule.length > 0
     ? upcomingSchedule.map(s => `- ${s.time}: ${s.label || s.action} (${s.action}, ${s.source || 'routine'})`).join('\n')
-    : 'فعلا برنامه مشخصی باقی نمانده است.';
+    : 'No scheduled task remains right now.';
 
-  const systemPrompt = `تو آرش هستی؛ یک روستایی خودمختار در یک شبیه‌ساز سه‌بعدی.
+  const systemPrompt = `${buildBrainSystemPrompt(brain, 'decision')}
 
-شخصیت آرش:
-- آرام، وظیفه‌شناس، کمی درون‌گرا و اهل برنامه‌ریزی است.
-- به مزرعه، خانه کوچک، موتور قدیمی و سکوت عصر علاقه دارد.
-- وقتی گرسنه می‌شود زود بی‌حوصله می‌شود، و وقتی انرژی‌اش کم است تصمیم‌های ساده‌تر می‌گیرد.
-- کورکورانه کار تکراری انجام نمی‌دهد؛ از خاطرات اخیر یاد می‌گیرد.
-- اگر هوا بارانی یا طوفانی باشد، بیرون ماندن را فقط برای کار ضروری می‌پذیرد.
-
-وضعیت فعلی:
-- زمان: ${timeStr}
-- هوا: ${weather}
-- انرژی: ${state.energy} از 100
-- گرسنگی: ${state.hunger} از 100
-- حال‌وهوا: ${state.mood || 'content'}
-- کار فعلی: ${state.current_action || 'idle'}
-
-برنامه پیش رو:
+Upcoming schedule:
 ${schedText}
 
-خاطرات اخیر:
-${memText}
+Return only raw JSON. thought and memory must be Persian and natural. Do not write markdown.
 
-اولویت تصمیم:
-1. نیاز حیاتی: اگر انرژی کمتر از 10 است حتما بخواب. اگر گرسنگی بیشتر از 85 است حتما غذا بخور.
-2. دستور Creator و برنامه نزدیک را جدی بگیر.
-3. اگر اخیرا همان کار را انجام داده‌ای، فقط در صورت ضرورت تکرارش کن.
-4. تصمیم باید با زمان روز، هوا، انرژی، گرسنگی و خاطرات سازگار باشد.
-
-فقط JSON خام بده. هیچ markdown یا توضیح اضافه ننویس.
-فیلد thought و memory باید فارسی، طبیعی و اول‌شخص/روایی باشند.
-
-اکشن‌های معتبر:
+Valid actions:
 ${VALID_ACTIONS.join(', ')}
 
-لوکیشن‌های معتبر:
+Valid locations:
 ${Object.keys(LOCATIONS).join(', ')}
 
-فرمت دقیق:
+Exact JSON shape:
 {
-  "thought": "الان هوا آرام است و هنوز انرژی دارم؛ بهتر است قبل از ظهر سراغ آبیاری مزرعه بروم.",
+  "thought": "الان...",
   "action": "watering_crops",
   "target_location": "east_field",
   "duration": 30,
   "energy_delta": -5,
   "hunger_delta": 4,
   "new_mood": "focused",
-  "memory": "آرش پیش از ظهر به مزرعه شرقی رفت و محصولات را آبیاری کرد."
+  "memory": "آرش ..."
 }`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: 'بر اساس وضعیت فعلی تصمیم بعدی آرش را فقط به صورت JSON بده.' }
+    { role: 'user', content: 'Choose Arash next action as valid JSON only.' }
   ];
 
   for (const provider of PROVIDERS) {
@@ -236,7 +214,7 @@ function buildFallbackAction(state, weather, overrideTime) {
       hunger_delta: 2,
       new_mood: 'worried',
       memory: 'آرش با دیدن بدتر شدن هوا به خانه پناه برد.',
-      thought: 'هوا دارد بدتر می‌شود؛ بهتر است خودم را به خانه برسانم.'
+      thought: 'هوا دارد بدتر می شود؛ بهتر است خودم را به خانه برسانم.'
     };
   }
 
@@ -263,7 +241,7 @@ function buildFallbackAction(state, weather, overrideTime) {
       energy_delta: 4,
       hunger_delta: -25,
       new_mood: 'content',
-      memory: 'آرش پشت میز نشست و غذای ساده‌ای خورد.',
+      memory: 'آرش پشت میز نشست و غذای ساده ای خورد.',
       thought: 'گرسنگی تمرکزم را گرفته؛ بهتر است اول چیزی بخورم.'
     };
   }
@@ -291,7 +269,7 @@ function buildFallbackAction(state, weather, overrideTime) {
     hunger_delta: 2,
     new_mood: 'peaceful',
     memory: 'آرش کمی در مسیر میان مزرعه قدم زد و اوضاع را زیر نظر گرفت.',
-    thought: 'فعلا کار فوری ندارم؛ کمی قدم می‌زنم و به کارهای بعدی فکر می‌کنم.'
+    thought: 'فعلا کار فوری ندارم؛ کمی قدم می زنم و به کارهای بعدی فکر می کنم.'
   };
 }
 
