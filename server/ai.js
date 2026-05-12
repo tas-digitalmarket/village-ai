@@ -6,6 +6,7 @@ const {
   SAMBANOVA_PRIMARY_MODEL,
   SAMBANOVA_FALLBACK_MODEL
 } = require('./config');
+const { searchMemories } = require('./database');
 const { readWorldState } = require('./world-state');
 const { buildBrainSnapshot, buildBrainSystemPrompt } = require('./brain');
 
@@ -143,10 +144,26 @@ async function askAI(state, memories, weather, overrideTime, upcomingSchedule) {
   }
 }
 
+function buildDecisionMemoryQuery(state, weather, timeStr, upcomingSchedule) {
+  const next = upcomingSchedule?.[0];
+  return [
+    state.current_action,
+    state.mood,
+    weather,
+    timeStr,
+    next?.label,
+    next?.action,
+    'farm crops food sleep creator'
+  ].filter(Boolean).join(' ');
+}
+
 async function callAI(state, memories, weather, overrideTime, upcomingSchedule) {
   const timeStr = overrideTime || state.world_time || '08:00';
   const worldState = readWorldState();
-  const brain = buildBrainSnapshot({ ...state, weather, world_time: timeStr }, memories, worldState);
+  const relevantMemories = searchMemories(buildDecisionMemoryQuery(state, weather, timeStr, upcomingSchedule), 8, {
+    types: ['creator', 'farm', 'survival', 'world', 'life']
+  });
+  const brain = buildBrainSnapshot({ ...state, weather, world_time: timeStr }, memories, worldState, relevantMemories);
   const schedText = upcomingSchedule && upcomingSchedule.length > 0
     ? upcomingSchedule.map(s => `- ${s.time}: ${s.label || s.action} (${s.action}, ${s.source || 'routine'})`).join('\n')
     : 'No scheduled task remains right now.';
