@@ -7,12 +7,15 @@ const cors      = require('cors');
 
 const {
   initDatabase, getState, getMemories,
+  getAidaState,
   getDirectives, addDirective, removeDirective, clearAllDirectives,
-  getCreatorMessages, addCreatorMessage, addMemory
+  getCreatorMessages, addCreatorMessage, addMemory,
+  getAidaMessages, addAidaMessage
 } = require('./database');
 const { readWorldState } = require('./world-state');
 const { startScheduler } = require('./scheduler');
 const { processDirective } = require('./director');
+const { processAidaMessage } = require('./aida');
 const { OPENROUTER_API_KEY, SAMBANOVA_API_KEY, CREATOR_TOKEN, DEBUG_ENABLED } = require('./config');
 
 const app    = express();
@@ -82,6 +85,7 @@ wss.on('connection', (ws) => {
 
   try {
     const state = getState();
+    const aidaState = getAidaState();
     const memories = getMemories(5);
     const directives = getDirectives();
     const { generateWeather } = require('./weather');
@@ -92,7 +96,7 @@ wss.on('connection', (ws) => {
 
     ws.send(JSON.stringify({
       type: 'state',
-      data: { ...state, memories, upcomingSchedule, world_state: worldState }
+      data: { ...state, ida_state: aidaState, memories, upcomingSchedule, world_state: worldState }
     }));
     ws.send(JSON.stringify({ type: 'directives', data: directives }));
   } catch (e) {
@@ -121,7 +125,7 @@ app.get('/api/state', (req, res) => {
   const state = getState();
   const memories = getMemories(10);
   const worldState = readWorldState();
-  res.json({ ...state, memories, world_state: worldState });
+  res.json({ ...state, ida_state: getAidaState(), memories, world_state: worldState });
 });
 
 app.get('/api/logs', (req, res) => {
@@ -168,7 +172,8 @@ app.post('/api/directive', async (req, res) => {
         type: 'state',
         data: {
           ...newState,
-          thought: result.immediate_action.thought || 'خالقم این را خواست...',
+          ida_state: getAidaState(),
+          thought: result.immediate_action.thought || 'خالق‌ام این را خواست...',
           memories: getMemories(5),
           world_state: readWorldState()
         }
@@ -207,6 +212,34 @@ app.delete('/api/directives', (req, res) => {
 
 app.get('/api/creator-messages', (req, res) => {
   res.json(getCreatorMessages(30));
+});
+
+app.get('/api/aida-messages', (req, res) => {
+  res.json(getAidaMessages(30));
+});
+
+app.post('/api/aida-message', async (req, res) => {
+  const { message } = req.body;
+  if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+  try {
+    const clean = message.trim();
+    addAidaMessage('creator', clean);
+    const result = await processAidaMessage(clean);
+    addAidaMessage('aida', result.aida_response);
+
+    const payload = {
+      aida_response: result.aida_response,
+      ida_state: result.state || getAidaState()
+    };
+
+    broadcast({ type: 'aida_message', data: payload });
+    broadcast({ type: 'state', data: { ...getState(), ida_state: payload.ida_state, memories: getMemories(5), world_state: readWorldState() } });
+    res.json(payload);
+  } catch (err) {
+    console.error('[API] /api/aida-message error:', err.message);
+    res.status(500).json({ error: 'Failed to process Aida message' });
+  }
 });
 
 app.get('/api/debug/logs', requireCreatorAuth, (req, res) => {
@@ -252,7 +285,7 @@ startScheduler(broadcast);
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🌍 Village AI Server running on http://0.0.0.0:${PORT}`);
-  console.log(`🤖 Arash is alive and thinking...\n`);
+  console.log(`🤖 Arash and Aida are alive and thinking...\n`);
 });
 
 server.on('error', (err) => {
