@@ -60,6 +60,11 @@ export class HUD {
     this.$thoughtText = document.getElementById('thought-text');
     this.$aidaCard = document.getElementById('aida-life-card');
     this.$aidaPill = document.getElementById('aida-status-pill');
+    this.$relationshipDialogue = document.getElementById('arash-aida-dialogue');
+    this.$relationshipPill = document.getElementById('arash-aida-pill');
+    this.$tabArash = document.getElementById('dashboard-tab-arash');
+    this.$tabAida = document.getElementById('dashboard-tab-aida');
+    this.$characterPanels = [...document.querySelectorAll('[data-character-panel]')];
     this.$goals = document.getElementById('daily-goals-list');
     this.$riskPill = document.getElementById('risk-pill');
     this.$riskDetail = document.getElementById('risk-detail');
@@ -75,8 +80,10 @@ export class HUD {
     this.$intentToggle = document.getElementById('intent-toggle');
     this._dayCount = 1;
     this._lastHour = -1;
+    this._selectedCharacter = 'arash';
     this.initDashboardToggle();
     this.initIntentToggle();
+    this.initCharacterTabs();
   }
 
   initDashboardToggle() {
@@ -94,6 +101,21 @@ export class HUD {
       const collapsed = this.$intentPanel.classList.toggle('is-collapsed');
       this.$intentToggle.textContent = collapsed ? '+' : '−';
       this.$intentToggle.title = collapsed ? 'Expand intent' : 'Minimize intent';
+    });
+  }
+
+  initCharacterTabs() {
+    this.$tabArash?.addEventListener('click', () => this.setCharacterPanel('arash'));
+    this.$tabAida?.addEventListener('click', () => this.setCharacterPanel('aida'));
+    this.setCharacterPanel(this._selectedCharacter);
+  }
+
+  setCharacterPanel(name) {
+    this._selectedCharacter = name === 'aida' ? 'aida' : 'arash';
+    this.$tabArash?.classList.toggle('active', this._selectedCharacter === 'arash');
+    this.$tabAida?.classList.toggle('active', this._selectedCharacter === 'aida');
+    this.$characterPanels.forEach(panel => {
+      panel.classList.toggle('is-hidden', panel.dataset.characterPanel !== this._selectedCharacter);
     });
   }
 
@@ -126,6 +148,7 @@ export class HUD {
     if (this.$thought) this.$thought.classList.toggle('is-live', Boolean(data.thought));
 
     this.updateAida(data.ida_state);
+    this.updateRelationshipConsole(data, data.ida_state);
 
     const goals = data.daily_plan?.goals || [];
     setHtml(this.$goals, goals.length ? goals.slice(0, 5).map(goalMarkup).join('') : '<div class="muted-empty">Daily goals will appear here.</div>');
@@ -143,6 +166,19 @@ export class HUD {
     }
     const events = data.world_events || [];
     setHtml(this.$events, events.length ? events.slice(0, 4).map(eventMarkup).join('') : '<div class="muted-empty">No notable event yet.</div>');
+  }
+
+  updateRelationshipConsole(arash = {}, aida = {}) {
+    if (!this.$relationshipDialogue) return;
+    const bond = pct(aida?.relationship_arash ?? 0);
+    const arashAction = arash.active_task_label || ACTION_LABELS[arash.current_action] || arash.current_action || 'observing the farm';
+    const aidaAction = aida?.active_task_label || ACTION_LABELS[aida?.current_action] || aida?.current_action || 'settling into village life';
+    const tone = bond >= 65 ? 'close' : bond >= 40 ? 'familiar' : 'distant';
+    if (this.$relationshipPill) this.$relationshipPill.textContent = tone;
+    this.$relationshipDialogue.innerHTML = `
+      <div class="dialogue-line"><strong>Arash</strong><span>${esc(arashAction)}</span></div>
+      <div class="dialogue-line"><strong>Aida</strong><span>${esc(aidaAction)}</span></div>
+      <div class="relationship-meter">${createMeter('Bond', bond, bond >= 55 ? 'ready' : 'primary')}</div>`;
   }
 
   updateAida(aida = {}) {
