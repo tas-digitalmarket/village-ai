@@ -8,16 +8,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=11" />
   <link rel="stylesheet" href="world-state.css?v=3" />
   <script type="importmap">
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "./hud.js?v=7": "./hud.js?v=10",
-      "./hud.js?v=8": "./hud.js?v=10",
-      "./hud.js?v=9": "./hud.js?v=10"
+      "./hud.js?v=7": "./hud.js?v=11",
+      "./hud.js?v=8": "./hud.js?v=11",
+      "./hud.js?v=9": "./hud.js?v=11",
+      "./hud.js?v=10": "./hud.js?v=11"
     }
   }
   </script>
@@ -62,16 +63,24 @@
         </div>
       </section>
 
-      <section class="dashboard-section dashboard-section--focus">
-        <div class="dashboard-section-head"><span>Intent</span><strong id="task-source-chip">steady</strong></div>
-        <div class="intent-row">
-          <span class="intent-icon" id="task-icon">💤</span>
-          <div class="intent-copy">
-            <strong id="task-label">Resting</strong>
-            <span id="task-context">Waiting for the next meaningful action.</span>
+      <section class="dashboard-section dashboard-section--focus" id="intent-panel">
+        <div class="dashboard-section-head intent-head">
+          <span>Intent</span>
+          <div class="intent-tools">
+            <strong id="task-source-chip">steady</strong>
+            <button id="intent-toggle" class="mini-toggle" title="Minimize intent">−</button>
           </div>
         </div>
-        <div class="insight-strip" id="thought-bubble"><span id="thought-text">Arash is observing the world.</span></div>
+        <div class="intent-body" id="intent-body">
+          <div class="intent-row">
+            <span class="intent-icon" id="task-icon">💤</span>
+            <div class="intent-copy">
+              <strong id="task-label">Resting</strong>
+              <span id="task-context">Waiting for the next meaningful action.</span>
+            </div>
+          </div>
+          <div class="insight-strip" id="thought-bubble"><span id="thought-text">Arash is observing the world.</span></div>
+        </div>
       </section>
 
       <section class="dashboard-section">
@@ -92,9 +101,7 @@
 
       <section class="dashboard-section">
         <div class="dashboard-section-head"><span>World Ledger</span></div>
-        <div id="world-state-list" class="world-state-list">
-          <div class="world-empty">Loading world...</div>
-        </div>
+        <div id="world-state-list" class="world-state-list"><div class="world-empty">Loading world...</div></div>
       </section>
 
       <section class="dashboard-section dashboard-split">
@@ -110,9 +117,7 @@
 
       <section class="dashboard-section">
         <div class="dashboard-section-head"><span>Schedule</span></div>
-        <div class="schedule-container">
-          <ul id="schedule-list" class="schedule-list"><li class="schedule-empty">Loading today's schedule...</li></ul>
-        </div>
+        <div class="schedule-container"><ul id="schedule-list" class="schedule-list"><li class="schedule-empty">Loading today's schedule...</li></ul></div>
       </section>
     </aside>
 
@@ -139,7 +144,7 @@
     </div>
   </div>
 
-  <script type="module" src="main.js?v=10"></script>
+  <script type="module" src="main.js?v=11"></script>
   <script type="module" src="clock-smooth.js?v=2"></script>
 </body>
 </html>
