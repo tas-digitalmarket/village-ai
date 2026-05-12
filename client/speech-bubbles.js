@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+const BUBBLE_TTL_MS = 30000;
+
 function clampText(value, fallback) {
   const text = String(value || fallback || '').trim();
   return text.length > 92 ? `${text.slice(0, 89)}...` : text;
@@ -19,14 +21,26 @@ export class CharacterSpeechBubbles {
     el.className = `overhead-bubble overhead-bubble--${tone}`;
     el.innerHTML = `<strong>${name}</strong><span></span>`;
     document.body.appendChild(el);
-    this.items.set(name.toLowerCase(), { root, el, text: '', visible: true });
+    this.items.set(name.toLowerCase(), { root, el, text: '', visible: true, expiresAt: 0 });
     return el;
   }
 
   setText(name, text) {
     const item = this.items.get(name.toLowerCase());
     if (!item) return;
-    item.text = clampText(text, '...');
+
+    const nextText = clampText(text, '');
+    if (!nextText) {
+      item.text = '';
+      item.expiresAt = 0;
+      return;
+    }
+
+    if (nextText !== item.text || Date.now() > item.expiresAt) {
+      item.expiresAt = Date.now() + BUBBLE_TTL_MS;
+    }
+
+    item.text = nextText;
     const span = item.el.querySelector('span');
     if (span) span.textContent = item.text;
   }
@@ -34,9 +48,10 @@ export class CharacterSpeechBubbles {
   update() {
     const width = window.innerWidth || this.domElement.clientWidth || 1;
     const height = window.innerHeight || this.domElement.clientHeight || 1;
+    const now = Date.now();
 
     this.items.forEach(item => {
-      if (!item.root || !item.text) {
+      if (!item.root || !item.text || now > item.expiresAt) {
         item.el.style.opacity = '0';
         return;
       }
