@@ -145,6 +145,54 @@ function dueRoutineTask(day, worldTime) {
   }) || null;
 }
 
+function fieldChoice(world, predicate) {
+  const entries = [
+    { key: 'east', location: 'east_field', field: world.fields?.east || {} },
+    { key: 'west', location: 'west_field', field: world.fields?.west || {} }
+  ].filter(({ field }) => predicate(field));
+  if (!entries.length) return null;
+  entries.sort((a, b) => {
+    const aScore = (b.field.growth || 0) - (a.field.growth || 0);
+    if (aScore !== 0) return aScore;
+    return (a.field.moisture || 0) - (b.field.moisture || 0);
+  });
+  return entries[0];
+}
+
+function makeNeedTask(label, action, location, duration = 25, priority = 50, reason = '') {
+  return { time: null, label, action, location, duration, source: 'need', priority, reason };
+}
+
+function chooseNeedDrivenTask(state, worldState, weather, minute, criticalOnly = false) {
+  const energy = Number(state.energy ?? 80);
+  const hunger = Number(state.hunger ?? 20);
+  const food = Number(worldState.storage?.food ?? 0);
+  const inShelter = (state.position_z || 0) < -5;
+
+  const readyField = fieldChoice(worldState, f => (f.growth || 0) >= 85);
+  const dryField = fieldChoice(worldState, f => (f.moisture || 0) <= 18);
+  const weakField = fieldChoice(worldState, f => (f.health || 0) <= 45);
+
+  if (energy <= 14) return makeNeedTask('Emergency Sleep', 'sleeping', 'bed', 75, 100, 'energy is critically low');
+  if (hunger >= 92 && food > 0) return makeNeedTask('Eat Before Weakness', 'eating', 'table', 20, 98, 'hunger is critical');
+  if ((weather === 'stormy' || weather === 'rainy') && !inShelter && energy < 35) {
+    return makeNeedTask('Take Shelter', 'running_to_shelter', 'home', 12, 95, 'bad weather and low energy');
+  }
+  if (criticalOnly) return null;
+
+  if (hunger >= 82 && food > 0) return makeNeedTask('Eat Something', 'eating', 'table', 20, 88, 'hunger is high');
+  if (food <= 2 && readyField) return makeNeedTask('Harvest Food Reserve', 'harvesting', readyField.location, 40, 86, 'food is low and crops are ready');
+  if (readyField) return makeNeedTask('Harvest Ready Crops', 'harvesting', readyField.location, 40, 82, 'crops are ready');
+  if (dryField && (worldState.well?.water_level ?? 0) > 8) return makeNeedTask('Water Dry Field', 'watering_crops', dryField.location, 30, 78, 'a field is too dry');
+  if ((worldState.animals?.hunger ?? 0) >= 78 && food > 1) return makeNeedTask('Feed Animals', 'tending_animals', 'fence_north', 25, 74, 'animals are hungry');
+  if (weakField) return makeNeedTask('Tend Weak Crops', 'tending_crops', weakField.location, 30, 70, 'crop health is weak');
+  if ((worldState.house?.cleanliness ?? 100) <= 24) return makeNeedTask('Clean The House', 'sitting', 'home', 25, 60, 'house is getting dirty');
+  if ((worldState.motorcycle?.condition ?? 100) <= 35) return makeNeedTask('Repair Motorcycle', 'checking_motorcycle', 'motorcycle', 25, 58, 'motorcycle condition is poor');
+  if (food <= 1) return makeNeedTask('Fish For Food', 'fishing', 'fishing_spot', 35, 56, 'food is almost gone');
+
+  return null;
+}
+
 function buildUpcomingSchedule(directives, worldTime) {
   const schedule = [];
   (directives || []).map(normalizeDirective).forEach(d => {
@@ -179,6 +227,7 @@ function startTask(item, state, absMinute) {
     current_action: item.action || 'idle',
     active_task_label: item.label || item.action || 'Task',
     active_task_source: item.source || 'routine',
+    active_task_reason: item.reason || null,
     task_started_at_abs: absMinute,
     task_ends_at_abs: absMinute + duration,
     position_x: pos.x,
@@ -197,6 +246,7 @@ function startNightSleep(state, absMinute, currentMinute) {
     current_action: 'sleeping',
     active_task_label: 'Sleep',
     active_task_source: 'routine',
+    active_task_reason: 'night sleep',
     task_started_at_abs: absMinute,
     task_ends_at_abs: nextWakeAbs(absMinute, currentMinute),
     position_x: pos.x,
@@ -214,6 +264,7 @@ function idleState(state) {
     current_action: 'idle',
     active_task_label: null,
     active_task_source: null,
+    active_task_reason: null,
     task_started_at_abs: null,
     task_ends_at_abs: null,
     mood: state.mood || 'content'
@@ -255,7 +306,7 @@ async function runMinutePulse(broadcast) {
 
     if (nextState.current_action !== 'idle' && nextState.task_ends_at_abs && abs >= Number(nextState.task_ends_at_abs)) {
       nextState = idleState(nextState);
-      thought = 'کارم تمام شد؛ تا کار بعدی کمی آرام می مانم.';
+      thought = 'کارم تمام شد؛ حالا اول می بینم چه کاری واقعا لازم است.';
     }
 
     if (isNightMinute(minute) && nextState.current_action !== 'sleeping') {
@@ -264,12 +315,18 @@ async function runMinutePulse(broadcast) {
     }
 
     if (nextState.energy <= 8 && nextState.current_action !== 'sleeping') {
-      nextState = startNightSleep(nextState, abs, minute);
+      const emergencySleep = makeNeedTask('Emergency Sleep', 'sleeping', 'bed', 75, 100, 'energy is critically low');
+      nextState = startTask(emergencySleep, nextState, abs);
       thought = 'بدنم دیگر توان ندارد؛ باید بخوابم تا از پا نیفتم.';
     }
 
     if (nextState.current_action === 'idle') {
-      const task = dueCreatorTask(directives, day, worldTime) || dueRoutineTask(day, worldTime);
+      const criticalNeed = chooseNeedDrivenTask(nextState, worldState, weather, minute, true);
+      const creatorTask = dueCreatorTask(directives, day, worldTime);
+      const needTask = chooseNeedDrivenTask(nextState, worldState, weather, minute, false);
+      const routineTask = dueRoutineTask(day, worldTime);
+      const task = criticalNeed || creatorTask || needTask || routineTask;
+
       if (task) {
         firedKeys.add(taskKey(day, task));
         nextState = startTask(task, nextState, abs);
@@ -279,8 +336,10 @@ async function runMinutePulse(broadcast) {
         }, weather);
         thought = task.source === 'creator'
           ? 'زمان دستور خالق رسیده؛ انجامش می دهم.'
-          : `${task.label} رسیده؛ شروع می کنم.`;
-        addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.`);
+          : task.source === 'need'
+            ? `الان ${task.label} مهم تر است؛ ${task.reason || 'بهتر است انجامش بدهم'}.`
+            : `${task.label} رسیده؛ شروع می کنم.`;
+        addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.${task.reason ? ` دلیل: ${task.reason}.` : ''}`);
         if (task.source === 'creator' && !task.recurring && task.id) removeDirective(task.id);
       }
     }
