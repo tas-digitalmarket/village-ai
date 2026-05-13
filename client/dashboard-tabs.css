@@ -1,5 +1,84 @@
+.world-status-console {
+  border-color: rgba(53, 212, 138, 0.24);
+}
+
+.world-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.world-status-grid .overview-stat strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .relationship-console {
   border-color: rgba(243, 195, 77, 0.22);
+}
+
+.social-chatbox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  min-height: 128px;
+  overflow-y: auto;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .14);
+  scrollbar-width: thin;
+}
+
+.chat-message {
+  width: fit-content;
+  max-width: 86%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: .78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
+}
+
+.chat-message strong {
+  font-size: .68rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.chat-message span {
+  color: var(--ink);
+}
+
+.chat-message time {
+  align-self: flex-end;
+  color: var(--muted);
+  font-size: .64rem;
+}
+
+.chat-message--arash {
+  align-self: flex-start;
+  border: 1px solid rgba(143, 199, 255, .32);
+  background: rgba(143, 199, 255, .15);
+}
+
+.chat-message--arash strong {
+  color: #8fc7ff;
+}
+
+.chat-message--aida {
+  align-self: flex-end;
+  border: 1px solid rgba(255, 179, 207, .34);
+  background: rgba(255, 179, 207, .16);
+}
+
+.chat-message--aida strong {
+  color: #ffb3cf;
 }
 
 .relationship-dialogue {
@@ -109,8 +188,16 @@
 }
 
 @media (max-width: 640px) {
+  .world-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dialogue-line {
     grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .chat-message {
+    max-width: 92%;
   }
 
   .camera-tools {
