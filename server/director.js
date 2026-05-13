@@ -6,7 +6,7 @@ const {
   SAMBANOVA_PRIMARY_MODEL,
   SAMBANOVA_FALLBACK_MODEL
 } = require('./config');
-const { searchMemories } = require('./database');
+const { searchMemories, getAidaState } = require('./database');
 const { readWorldState } = require('./world-state');
 const { buildBrainSnapshot, buildBrainSystemPrompt, buildConversationFallback } = require('./brain');
 
@@ -47,8 +47,8 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 function isConversationOnly(message) {
   const text = String(message || '').toLowerCase();
   const commandHints = [
-    'every day', 'daily', 'at ', 'now', 'right now',
-    'هر روز', 'روزانه', 'ساعت', 'الان', 'همین الان', 'فوری',
+    'every day', 'daily', 'at ', 'right now',
+    'هر روز', 'روزانه', 'ساعت', 'همین الان', 'فوری',
     'برو', 'انجام بده', 'آبیاری', 'بخواب', 'بخور', 'برداشت', 'چوب'
   ];
   return !commandHints.some(hint => text.includes(hint));
@@ -131,21 +131,26 @@ function memoryQueryForDecision(message, state) {
     state.current_action,
     state.mood,
     state.weather,
-    state.world_time
+    state.world_time,
+    'Aida ایدا neighbor همسایه'
   ].filter(Boolean).join(' ');
 }
 
 async function processDirective(message, state, memories) {
   const worldState = readWorldState();
-  const relevantMemories = searchMemories(memoryQueryForDecision(message, state), 8, {
-    types: ['creator', 'farm', 'survival', 'life']
+  const aidaState = getAidaState();
+  const arashState = { ...state, aida_state: aidaState };
+  const relevantMemories = searchMemories(memoryQueryForDecision(message, arashState), 8, {
+    types: ['creator', 'farm', 'survival', 'life', 'social']
   });
-  const brain = buildBrainSnapshot(state, memories, worldState, relevantMemories);
+  const brain = buildBrainSnapshot(arashState, memories, worldState, relevantMemories);
 
   if (isConversationOnly(message)) {
     const systemPrompt = `${buildBrainSystemPrompt(brain, 'conversation')}
 
 You are answering the Creator directly.
+This is conversation, not a command parser. Arash should sound present, human, and aware of his world.
+If the Creator asks about Aida, answer naturally: Aida is Arash's nearby neighbor, an herbalist/gardener/animal keeper, and their relationship is still new.
 Return only valid JSON with this exact shape:
 {
   "arash_response": "A natural Persian answer from Arash, one or two short sentences.",
@@ -162,8 +167,8 @@ Return only valid JSON with this exact shape:
     for (const provider of PROVIDERS) {
       for (const model of provider.models.filter(Boolean)) {
         try {
-          const text = await callProvider(provider, model, messages, 0.45);
-          return normalizeDirectiveResult(extractJSON(text), message, state, memories, worldState, relevantMemories);
+          const text = await callProvider(provider, model, messages, 0.5);
+          return normalizeDirectiveResult(extractJSON(text), message, arashState, memories, worldState, relevantMemories);
         } catch (err) {
           console.error(`[Director:${provider.name}] conversation ${model} failed:`, String(err.message || err).slice(0, 180));
           if (String(err.message || '').includes('HTTP 429')) await sleep(1500);
@@ -172,7 +177,7 @@ Return only valid JSON with this exact shape:
     }
 
     return {
-      arash_response: buildConversationFallback(message, state, memories, worldState, relevantMemories),
+      arash_response: buildConversationFallback(message, arashState, memories, worldState, relevantMemories),
       memory: `Creator talked with Arash: ${message.slice(0, 100)}`,
       directives: [],
       immediate_action: null
@@ -185,9 +190,10 @@ The Creator may be giving Arash a scheduled or immediate command.
 Rules:
 - If the message has a specific time, put it inside directives.
 - If it says daily, every day, هر روز, روزانه, هر شب, or هر صبح, set recurring to true.
-- If it says now, right now, الان, همین الان, فوری, or همین حالا, create immediate_action.
+- If it says now, right now, الان, همین الان, فوری, or همین حالا as a command, create immediate_action.
 - If it is only conversation, keep directives empty.
 - arash_response must sound like Arash speaking naturally as a human farmer.
+- Arash knows Aida is a nearby villager; use that knowledge naturally if the message mentions her.
 - Do not mention percentages or internal state unless the Creator asked for them.
 - Return only raw JSON; no markdown.
 
@@ -216,7 +222,7 @@ JSON shape:
     for (const model of provider.models.filter(Boolean)) {
       try {
         const text = await callProvider(provider, model, messages);
-        const parsed = normalizeDirectiveResult(extractJSON(text), message, state, memories, worldState, relevantMemories);
+        const parsed = normalizeDirectiveResult(extractJSON(text), message, arashState, memories, worldState, relevantMemories);
         console.log(`[Director:${provider.name}:${model}] creator message parsed`);
         return parsed;
       } catch (err) {
@@ -228,7 +234,7 @@ JSON shape:
   }
 
   return {
-    arash_response: buildConversationFallback(message, state, memories, worldState, relevantMemories),
+    arash_response: buildConversationFallback(message, arashState, memories, worldState, relevantMemories),
     memory: `Creator talked with Arash: ${message.slice(0, 100)}`,
     directives: [],
     immediate_action: null
