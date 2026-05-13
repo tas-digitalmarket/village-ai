@@ -10,8 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css?v=16" />
   <link rel="stylesheet" href="world-state.css?v=3" />
-  <link rel="stylesheet" href="dashboard-tabs.css?v=2" />
-  <style>.character-panel.is-hidden{display:none!important}.character-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.character-tab{min-height:38px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-weight:800;cursor:pointer}.character-tab.active{background:rgba(53,212,138,.14);border-color:rgba(53,212,138,.38);color:var(--ink)}.relationship-dialogue{display:flex;flex-direction:column;gap:8px}.dialogue-line{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 10px}.dialogue-line strong{color:var(--primary);font-size:.74rem}.dialogue-line span{color:var(--muted);font-size:.76rem;line-height:1.45;overflow-wrap:anywhere}.relationship-meter{border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.035);border-radius:8px;padding:9px 10px}.aida-life-block{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}</style>
+  <link rel="stylesheet" href="dashboard-tabs.css?v=3" />
+  <style>.character-panel.is-hidden{display:none!important}.aida-life-block{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}</style>
   <script type="importmap">
   {
     "imports": {
@@ -45,21 +45,25 @@
           <div class="dashboard-kicker">Village AI</div>
           <h1 class="dashboard-title">Village Life Console</h1>
         </div>
-        <div class="dashboard-header-tools">
-          <div class="dashboard-chip-row">
-            <span class="dashboard-chip" id="conn-status">● Reconnecting...</span>
-            <span class="dashboard-chip dashboard-chip--soft" id="stat-day">Day 1</span>
-          </div>
-          <button id="dashboard-toggle" class="mini-toggle dashboard-toggle" title="Minimize console">−</button>
-        </div>
+        <button id="dashboard-toggle" class="mini-toggle dashboard-toggle" title="Minimize console">−</button>
       </header>
 
       <div class="dashboard-body" id="dashboard-body">
+        <section class="dashboard-section world-status-console" id="world-status-console">
+          <div class="dashboard-section-head"><span>World Status</span><strong id="conn-status">● Reconnecting...</strong></div>
+          <div class="world-status-grid">
+            <div class="overview-stat"><span>Day</span><strong id="stat-day">Day 1</strong></div>
+            <div class="overview-stat"><span>Time</span><strong id="stat-time">06:00:00</strong></div>
+            <div class="overview-stat"><span>Weather</span><strong id="stat-weather">sunny</strong></div>
+            <div class="overview-stat"><span>State</span><strong id="world-status-mood">steady</strong></div>
+          </div>
+        </section>
+
         <section class="dashboard-section relationship-console" id="arash-aida-console">
-          <div class="dashboard-section-head"><span>Arash & Aida</span><strong id="arash-aida-pill">distant</strong></div>
-          <div id="arash-aida-dialogue" class="relationship-dialogue">
-            <div class="dialogue-line dialogue-line--arash"><strong>Arash</strong><span>Busy with the farm.</span></div>
-            <div class="dialogue-line dialogue-line--aida"><strong>Aida</strong><span>Settling into her homestead.</span></div>
+          <div class="dashboard-section-head"><span>Arash & Aida Chat</span><strong id="arash-aida-pill">nearby</strong></div>
+          <div id="arash-aida-dialogue" class="social-chatbox" aria-live="polite">
+            <div class="chat-message chat-message--arash"><strong>Arash</strong><span>Busy with the farm.</span><time>--:--</time></div>
+            <div class="chat-message chat-message--aida"><strong>Aida</strong><span>Settling into her homestead.</span><time>--:--</time></div>
           </div>
         </section>
 
@@ -69,9 +73,7 @@
         </div>
 
         <section class="dashboard-overview character-panel character-panel--arash" data-character-panel="arash">
-          <div class="overview-grid">
-            <div class="overview-stat"><span>Time</span><strong id="stat-time">06:00:00</strong></div>
-            <div class="overview-stat"><span>Weather</span><strong id="stat-weather">sunny</strong></div>
+          <div class="overview-grid overview-grid--compact">
             <div class="overview-stat"><span>Mood</span><strong id="stat-mood">content</strong></div>
           </div>
           <div class="vitals-grid">
@@ -123,6 +125,7 @@
   </div>
 
   <script type="module" src="main.js?v=18"></script>
+  <script type="module" src="life-console.js?v=1"></script>
   <script type="module" src="clock-smooth.js?v=2"></script>
 </body>
 </html>
