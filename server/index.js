@@ -13,6 +13,7 @@ const {
   getAidaMessages, addAidaMessage
 } = require('./database');
 const { readWorldState } = require('./world-state');
+const { getSocialMessages, addSocialDialogueMessages } = require('./social-chat');
 const { startScheduler } = require('./scheduler');
 const { processDirective } = require('./director');
 const { processAidaMessage } = require('./aida');
@@ -96,7 +97,7 @@ wss.on('connection', (ws) => {
 
     ws.send(JSON.stringify({
       type: 'state',
-      data: { ...state, ida_state: aidaState, memories, upcomingSchedule, world_state: worldState }
+      data: { ...state, ida_state: aidaState, memories, upcomingSchedule, world_state: worldState, social_messages: getSocialMessages(40) }
     }));
     ws.send(JSON.stringify({ type: 'directives', data: directives }));
   } catch (e) {
@@ -125,7 +126,21 @@ app.get('/api/state', (req, res) => {
   const state = getState();
   const memories = getMemories(10);
   const worldState = readWorldState();
-  res.json({ ...state, ida_state: getAidaState(), memories, world_state: worldState });
+  res.json({ ...state, ida_state: getAidaState(), memories, world_state: worldState, social_messages: getSocialMessages(40) });
+});
+
+app.get('/api/social-messages', (req, res) => {
+  res.json(getSocialMessages(80));
+});
+
+app.post('/api/social-messages', (req, res) => {
+  const state = getState();
+  const messages = addSocialDialogueMessages(req.body?.lines || [], {
+    world_day: state.day,
+    world_time: state.world_time,
+    source: req.body?.source || 'overhead_bubble'
+  });
+  res.json({ ok: true, messages });
 });
 
 app.get('/api/logs', (req, res) => {
@@ -173,9 +188,10 @@ app.post('/api/directive', async (req, res) => {
         data: {
           ...newState,
           ida_state: getAidaState(),
-          thought: result.immediate_action.thought || 'خالق‌ام این را خواست...',
+          thought: result.immediate_action.thought || 'خالقم این را خواست...',
           memories: getMemories(5),
-          world_state: readWorldState()
+          world_state: readWorldState(),
+          social_messages: getSocialMessages(40)
         }
       });
     }
@@ -234,7 +250,7 @@ app.post('/api/aida-message', async (req, res) => {
     };
 
     broadcast({ type: 'aida_message', data: payload });
-    broadcast({ type: 'state', data: { ...getState(), ida_state: payload.ida_state, memories: getMemories(5), world_state: readWorldState() } });
+    broadcast({ type: 'state', data: { ...getState(), ida_state: payload.ida_state, memories: getMemories(5), world_state: readWorldState(), social_messages: getSocialMessages(40) } });
     res.json(payload);
   } catch (err) {
     console.error('[API] /api/aida-message error:', err.message);
