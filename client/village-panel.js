@@ -5,6 +5,7 @@ const DIALOGUE_API = '/api/dialogue-log';
 
 let lastDialogueKey = '';
 let lastRenderedKey = '';
+let latestMessages = [];
 
 function speakerKey(speaker) {
   return speaker === 'aida' ? 'aida' : 'arash';
@@ -37,8 +38,10 @@ function renderMessages(messages = []) {
   if (!dialogueEl) return;
   const clean = messages.filter(msg => msg && msg.text).slice(-80);
   const key = messageKey(clean);
-  if (key && key === lastRenderedKey) return;
+  const alreadyRendered = dialogueEl.querySelectorAll('.chat-message').length > 0;
+  if (key && key === lastRenderedKey && alreadyRendered) return;
   lastRenderedKey = key;
+  latestMessages = clean;
 
   dialogueEl.replaceChildren();
   clean.slice(-40).forEach((msg) => {
@@ -112,9 +115,19 @@ async function refreshVillagePanel() {
       renderMessages(lines);
     }
   } catch (error) {
-    // The main scene keeps running even if this optional console refresh misses a beat.
+    if (latestMessages.length) renderMessages(latestMessages);
   }
 }
 
+function restoreChatIfNeeded() {
+  if (!dialogueEl || !latestMessages.length) return;
+  if (!dialogueEl.querySelector('.chat-message')) renderMessages(latestMessages);
+}
+
+if (dialogueEl) {
+  new MutationObserver(restoreChatIfNeeded).observe(dialogueEl, { childList: true });
+}
+
 refreshVillagePanel();
-setInterval(refreshVillagePanel, 5000);
+setInterval(refreshVillagePanel, 3000);
+setInterval(restoreChatIfNeeded, 1000);
