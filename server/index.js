@@ -122,6 +122,16 @@ function broadcast(data) {
   });
 }
 
+function writeSocialDialogue(req, res) {
+  const state = getState();
+  const messages = addSocialDialogueMessages(req.body?.lines || [], {
+    world_day: state.day,
+    world_time: state.world_time,
+    source: req.body?.source || 'overhead_bubble'
+  });
+  res.json({ ok: true, messages });
+}
+
 app.get('/api/state', (req, res) => {
   const state = getState();
   const memories = getMemories(10);
@@ -133,15 +143,13 @@ app.get('/api/social-messages', (req, res) => {
   res.json(getSocialMessages(80));
 });
 
-app.post('/api/social-messages', (req, res) => {
-  const state = getState();
-  const messages = addSocialDialogueMessages(req.body?.lines || [], {
-    world_day: state.day,
-    world_time: state.world_time,
-    source: req.body?.source || 'overhead_bubble'
-  });
-  res.json({ ok: true, messages });
+app.post('/api/social-messages', writeSocialDialogue);
+
+app.get('/api/dialogue-log', (req, res) => {
+  res.json(getSocialMessages(80));
 });
+
+app.post('/api/dialogue-log', writeSocialDialogue);
 
 app.get('/api/logs', (req, res) => {
   res.json(getMemories(50));
