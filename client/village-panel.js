@@ -1,6 +1,7 @@
 const dialogueEl = document.getElementById('arash-aida-dialogue');
 const pillEl = document.getElementById('arash-aida-pill');
 const worldMoodEl = document.getElementById('world-status-mood');
+const DIALOGUE_API = '/api/dialogue-log';
 
 let lastDialogueKey = '';
 let lastRenderedKey = '';
@@ -73,7 +74,7 @@ async function persistDialogue(lines, state = {}) {
   lastDialogueKey = key;
 
   try {
-    const res = await fetch('/api/social-messages', {
+    const res = await fetch(DIALOGUE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source: 'overhead_bubble', lines: normalized })
@@ -103,7 +104,7 @@ async function refreshVillagePanel() {
     const lines = normalizeLines(state.social_dialogue || state.ida_state?.social_dialogue, state);
     await persistDialogue(lines, state);
 
-    const messagesRes = await fetch('/api/social-messages', { cache: 'no-store' });
+    const messagesRes = await fetch(DIALOGUE_API, { cache: 'no-store' });
     if (messagesRes.ok) {
       const messages = await messagesRes.json();
       renderMessages(Array.isArray(messages) && messages.length ? messages : lines);
