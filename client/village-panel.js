@@ -1,0 +1,119 @@
+const dialogueEl = document.getElementById('arash-aida-dialogue');
+const pillEl = document.getElementById('arash-aida-pill');
+const worldMoodEl = document.getElementById('world-status-mood');
+
+let lastDialogueKey = '';
+let lastRenderedKey = '';
+
+function speakerKey(speaker) {
+  return speaker === 'aida' ? 'aida' : 'arash';
+}
+
+function speakerLabel(speaker) {
+  return speakerKey(speaker) === 'aida' ? 'Aida' : 'Arash';
+}
+
+function normalizeLines(lines = [], state = {}) {
+  const fromState = Array.isArray(lines) ? lines : [];
+  const clean = fromState
+    .filter(line => line && line.text)
+    .map(line => ({ speaker: speakerKey(line.speaker), text: String(line.text), world_time: line.world_time || state.world_time || '' }));
+
+  if (clean.length) return clean.slice(-6);
+
+  const aidaState = state.ida_state || {};
+  return [
+    { speaker: 'arash', text: state.thought || state.active_task_label || 'I am keeping an eye on the farm.', world_time: state.world_time || '' },
+    { speaker: 'aida', text: aidaState.thought || aidaState.active_task_label || 'I am settling into my homestead.', world_time: state.world_time || '' }
+  ];
+}
+
+function messageKey(messages) {
+  return messages.map(msg => `${msg.id || ''}:${msg.speaker}:${msg.text}:${msg.world_time || ''}`).join('|');
+}
+
+function renderMessages(messages = []) {
+  if (!dialogueEl) return;
+  const clean = messages.filter(msg => msg && msg.text).slice(-80);
+  const key = messageKey(clean);
+  if (key && key === lastRenderedKey) return;
+  lastRenderedKey = key;
+
+  dialogueEl.replaceChildren();
+  clean.slice(-40).forEach((msg) => {
+    const row = document.createElement('div');
+    const who = speakerKey(msg.speaker);
+    row.className = `chat-message chat-message--${who}`;
+
+    const name = document.createElement('strong');
+    name.textContent = speakerLabel(who);
+
+    const text = document.createElement('span');
+    text.textContent = msg.text;
+
+    const time = document.createElement('time');
+    time.textContent = msg.world_time || '';
+
+    row.append(name, text, time);
+    dialogueEl.append(row);
+  });
+
+  dialogueEl.scrollTop = dialogueEl.scrollHeight;
+  if (pillEl) {
+    const hasArash = clean.some(msg => speakerKey(msg.speaker) === 'arash');
+    const hasAida = clean.some(msg => speakerKey(msg.speaker) === 'aida');
+    pillEl.textContent = hasArash && hasAida ? 'conversation' : 'nearby';
+  }
+}
+
+async function persistDialogue(lines, state = {}) {
+  const normalized = normalizeLines(lines, state);
+  const key = messageKey(normalized);
+  if (!key || key === lastDialogueKey) return;
+  lastDialogueKey = key;
+
+  try {
+    const res = await fetch('/api/social-messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'overhead_bubble', lines: normalized })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.messages)) renderMessages(data.messages);
+    }
+  } catch (error) {
+    renderMessages(normalized);
+  }
+}
+
+function updateWorldMood(state = {}) {
+  if (!worldMoodEl) return;
+  const mode = state.risk_state?.mode || state.mood || 'steady';
+  worldMoodEl.textContent = mode;
+}
+
+async function refreshVillagePanel() {
+  try {
+    const stateRes = await fetch('/api/state', { cache: 'no-store' });
+    if (!stateRes.ok) return;
+    const state = await stateRes.json();
+    updateWorldMood(state);
+
+    const lines = normalizeLines(state.social_dialogue || state.ida_state?.social_dialogue, state);
+    await persistDialogue(lines, state);
+
+    const messagesRes = await fetch('/api/social-messages', { cache: 'no-store' });
+    if (messagesRes.ok) {
+      const messages = await messagesRes.json();
+      renderMessages(Array.isArray(messages) && messages.length ? messages : lines);
+    } else {
+      renderMessages(lines);
+    }
+  } catch (error) {
+    // The main scene keeps running even if this optional console refresh misses a beat.
+  }
+}
+
+refreshVillagePanel();
+setInterval(refreshVillagePanel, 5000);
