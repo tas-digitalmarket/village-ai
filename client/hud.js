@@ -3,7 +3,7 @@ const ACTION_ICONS = {
   sleeping: '😴', running_to_shelter: '🏃', sitting: '🧘', praying: '🙏', fishing: '🎣',
   tending_animals: '🐄', checking_motorcycle: '🏍️', wandering: '🌿', tending_crops: '🌱',
   morning_garden: '🌱', checking_herbs: '🌿', village_errand: '🧺', resting: '🧘', animal_care: '🐐',
-  neighbor_walk: '🚶', evening_prayer: '🙏', watering_garden: '💧'
+  neighbor_walk: '🚶', evening_prayer: '🙏', watering_garden: '💧', shared_path_garden: '🌼'
 };
 
 const ACTION_LABELS = {
@@ -13,7 +13,7 @@ const ACTION_LABELS = {
   checking_motorcycle: 'Checking Motorcycle', wandering: 'Wandering the Farm', tending_crops: 'Tending Crops',
   morning_garden: 'Morning Garden Care', checking_herbs: 'Checking Herbs', village_errand: 'Village Errand',
   resting: 'Quiet Rest', animal_care: 'Animal Care', neighbor_walk: 'Neighbor Walk', evening_prayer: 'Evening Prayer',
-  watering_garden: 'Watering Garden'
+  watering_garden: 'Watering Garden', shared_path_garden: 'Shared Path Garden Work'
 };
 
 const WEATHER_ICONS = { sunny: '☀️', cloudy: '⛅', rainy: '🌧️', foggy: '🌫️', windy: '💨', stormy: '⛈️' };
@@ -196,6 +196,12 @@ export class HUD {
     const hunger = pct(aida.hunger ?? 0);
     const icon = ACTION_ICONS[aida.current_action] || '🌿';
     const position = `${Number(aida.position_x ?? 0).toFixed(1)}, ${Number(aida.position_z ?? 0).toFixed(1)}`;
+    const world = aida.aida_world || {};
+    const risk = aida.risk_state || {};
+    const goals = aida.daily_plan?.goals || [];
+    const skills = aida.skills || {};
+    const memories = aida.short_memory || [];
+    const events = aida.world_events || [];
 
     if (this.$aidaPill) this.$aidaPill.textContent = mood;
     this.$aidaCard.innerHTML = `
@@ -203,12 +209,21 @@ export class HUD {
         <span class="villager-avatar">${icon}</span>
         <div><strong>${esc(aida.name || 'Aida')}</strong><span>${esc(aida.role || 'villager')}</span></div>
       </div>
-      <div class="villager-life-action"><strong>${esc(action)}</strong><span>${esc(aida.home_label || 'village homestead')} · ${esc(position)}</span></div>
+      <div class="villager-life-action"><strong>${esc(action)}</strong><span>${esc(aida.home_label || 'Aida homestead')} · ${esc(position)}</span></div>
       <div class="villager-life-grid">
         ${createMeter('Energy', energy, energy < 30 ? 'warn' : 'primary')}
         ${createMeter('Hunger', hunger, hunger > 70 ? 'warn' : 'primary')}
         ${createMeter('Arash Bond', relation, relation > 55 ? 'ready' : 'primary')}
-      </div>`;
+      </div>
+      <div class="aida-life-block"><div class="dashboard-section-head"><span>Needs & Risk</span><strong>${esc(risk.mode || 'stable')}</strong></div>${riskMarkup(risk)}</div>
+      <div class="aida-life-block"><div class="dashboard-section-head"><span>Aida World</span></div><div class="world-ledger-grid">
+        ${createMetric('Food', world.supplies?.food ?? 0)}${createMetric('Herbs', world.supplies?.herbs ?? 0)}${createMetric('Thread', world.supplies?.thread ?? 0)}
+        ${createMetric('Herb Stock', world.herbs?.stock ?? 0)}
+      </div>${createMeter('Garden Moisture', world.garden?.moisture, (world.garden?.moisture ?? 100) < 30 ? 'warn' : 'primary')}${createMeter('Garden Growth', world.garden?.growth, (world.garden?.growth ?? 0) > 75 ? 'ready' : 'primary')}${createMeter('Garden Health', world.garden?.health, (world.garden?.health ?? 100) < 45 ? 'warn' : 'primary')}${createMeter('Animal Hunger', world.animals?.hunger, (world.animals?.hunger ?? 0) > 70 ? 'warn' : 'primary')}${createMeter('Animal Trust', world.animals?.trust, 'ready')}${createMeter('Home Cleanliness', world.home?.cleanliness, (world.home?.cleanliness ?? 100) < 35 ? 'warn' : 'primary')}</div>
+      <div class="aida-life-block"><div class="dashboard-section-head"><span>Goals</span></div>${goals.length ? goals.slice(0, 5).map(goalMarkup).join('') : '<div class="muted-empty">No Aida goals yet.</div>'}</div>
+      <div class="aida-life-block"><div class="dashboard-section-head"><span>Skills</span></div>${[skillMarkup('Gardening', skills.gardening), skillMarkup('Herbs', skills.herbs), skillMarkup('Animals', skills.animals), skillMarkup('Cooking', skills.cooking), skillMarkup('Social', skills.social), skillMarkup('Resilience', skills.resilience)].join('')}</div>
+      <div class="aida-life-block"><div class="dashboard-section-head"><span>Short Memory</span></div>${memories.length ? `<ul class="dashboard-feed">${memories.slice(0, 5).map(m => `<li>${esc(m.text || m.content || m)}</li>`).join('')}</ul>` : '<div class="muted-empty">No short memory yet.</div>'}</div>
+      <div class="aida-life-block"><div class="dashboard-section-head"><span>World Events</span></div>${events.length ? events.slice(0, 4).map(eventMarkup).join('') : '<div class="muted-empty">No Aida event yet.</div>'}</div>`;
   }
 
   updateWorld(world) {
