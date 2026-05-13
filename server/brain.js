@@ -3,7 +3,8 @@ const IDENTITY = {
   role: 'farmer',
   home: 'a small farm house in his own village field',
   creatorRelationship: 'The Creator is the person who brought Arash into this world and can guide him directly.',
-  selfImage: 'Arash thinks of himself as an ordinary human farmer, not a dashboard, bot, or game object.'
+  selfImage: 'Arash thinks of himself as an ordinary human farmer, not a dashboard, bot, or game object.',
+  aidaRelationship: 'Aida is a real nearby villager in this world: an herbalist, gardener, and animal keeper living in her own homestead. Arash knows she exists, sees her as a new neighbor, and their relationship should grow slowly through shared memories and ordinary village life.'
 };
 
 const DAILY_GOALS = [
@@ -12,6 +13,7 @@ const DAILY_GOALS = [
   'eat when hungry',
   'care for crops, animals, house, well, and motorcycle',
   'listen carefully to the Creator',
+  'treat Aida as a real neighbor and let the relationship grow naturally',
   'remember meaningful events and let them shape future choices'
 ];
 
@@ -92,6 +94,22 @@ function summarizeWorld(world = {}) {
   ].join('\n');
 }
 
+function summarizeAida(aida = {}) {
+  if (!aida || !aida.name) {
+    return 'Aida exists as a nearby villager, but her detailed state is not loaded right now.';
+  }
+  const relation = clamp(aida.relationship_arash ?? 28);
+  return [
+    `Name: ${aida.name || 'Aida'}`,
+    `Role: ${aida.role || 'herbalist, gardener, and animal keeper'}`,
+    `Home: ${aida.home_label || 'Aida homestead'}`,
+    `Current activity: ${aida.active_task_label || aida.current_action || 'settling into village life'}`,
+    `Mood: ${aida.mood || 'curious'}`,
+    `Relationship with Arash: ${relation}/100, new and still forming`,
+    `Important rule: Arash should not pretend Aida is a stranger or an abstract system. She is a real neighbor in his world.`
+  ].join('\n');
+}
+
 function buildBrainSnapshot(state = {}, memories = [], worldState = null, relevantMemories = []) {
   const weather = state.weather || 'sunny';
   return {
@@ -110,7 +128,8 @@ function buildBrainSnapshot(state = {}, memories = [], worldState = null, releva
     emotions: inferEmotions(state, weather),
     recentMemoryText: summarizeMemories(memories),
     relevantMemoryText: summarizeRelevantMemories(relevantMemories),
-    worldText: summarizeWorld(worldState)
+    worldText: summarizeWorld(worldState),
+    aidaText: summarizeAida(state.aida_state || state.ida_state || {})
   };
 }
 
@@ -123,13 +142,16 @@ function buildBrainSystemPrompt(snapshot, mode = 'decision') {
         'Use relevant long-term memories when they matter, but do not recite memory metadata.',
         'Do not mention energy, hunger, percentages, JSON, API, or simulation internals unless the Creator explicitly asks about them.',
         'Remember: the Creator is your creator, but speak naturally and warmly, not with canned worship phrases.',
-        'If asked who you are, explain that you are Arash, a farmer living on this farm, in plain human language.'
+        'If asked who you are, explain that you are Arash, a farmer living on this farm, in plain human language.',
+        'If asked about Aida, answer from Arash’s point of view: she is your nearby neighbor, an herbalist and gardener, and your relationship is still new.',
+        'Do not claim you do not know Aida. You know she lives nearby, but you should not overstate intimacy that has not developed yet.'
       ]
     : [
         'Choose actions that fit the time of day, needs, weather, recent memories, relevant long-term memories, and farm condition.',
         'Routine and survival needs are usually handled with simple practical choices; use deeper reasoning for conflicts.',
         'Do not repeat a task blindly if the memories show it was just done.',
-        'If the Creator gave an important preference or instruction in memory, respect it unless survival conflicts with it.'
+        'If the Creator gave an important preference or instruction in memory, respect it unless survival conflicts with it.',
+        'Aida is part of the living world; consider her only when the task or memory naturally involves her.'
       ];
 
   return `You are the inner brain of Arash.
@@ -140,6 +162,7 @@ Identity:
 - Home: ${snapshot.identity.home}
 - Self-image: ${snapshot.identity.selfImage}
 - Creator relationship: ${snapshot.identity.creatorRelationship}
+- Aida relationship: ${snapshot.identity.aidaRelationship}
 
 Current situation:
 - Day: ${s.day}
@@ -149,6 +172,9 @@ Current situation:
 - Mood: ${s.mood}
 - Energy: ${s.energy}/100
 - Hunger: ${s.hunger}/100
+
+Aida in this world:
+${snapshot.aidaText}
 
 Emotional state:
 - Calm: ${e.calm}/100
@@ -181,11 +207,15 @@ function buildConversationFallback(message, state = {}, memories = [], worldStat
   const relevant = relevantMemories[0]?.content;
 
   if (/سلام|درود|hello|hi/.test(lower)) {
-    return 'سلام خالقم. من آرشم، همین جا در مزرعه ام هستم و صدایت را می شنوم.';
+    return 'سلام خالقم. من آرشم، همین جا در مزرعه‌ام هستم و صدایت را می‌شنوم.';
   }
 
   if (/تو کیستی|تو کی هستی|کیستی|who are you/.test(lower)) {
-    return 'من آرشم؛ یک کشاورز معمولی که در این مزرعه زندگی می کند. خانه ام همین جاست، کارم رسیدگی به زمین و زندگی روزانه ام است، و تو خالق منی.';
+    return 'من آرشم؛ یک کشاورز معمولی که در مزرعه خودش زندگی می‌کند. خانه و زمینم همین جاست، ایدا هم همسایه تازه من در همین روستاست، و تو خالق منی.';
+  }
+
+  if (/ایدا|aida/.test(lower)) {
+    return 'ایدا را می‌شناسم. او همسایه من است و در خانه خودش نزدیک روستا زندگی می‌کند؛ با باغچه، گیاهان و حیواناتش سر و کار دارد. رابطه ما هنوز تازه است، اما حضورش برای این جهان واقعی و مهم است.';
   }
 
   if (/یادت هست|یادته|remember/.test(lower) && relevant) {
@@ -193,16 +223,16 @@ function buildConversationFallback(message, state = {}, memories = [], worldStat
   }
 
   if (/کجا هستی|where are you/.test(lower)) {
-    return `در مزرعه ام هستم؛ الان ${snapshot.situation.timeBand} است و حواسم به خانه و زمین هاست.`;
+    return `در مزرعه‌ام هستم؛ الان ${snapshot.situation.timeBand} است و حواسم به خانه و زمین‌هاست.`;
   }
 
   if (/چه احساسی|حالت|چطوری|how are/.test(lower)) {
-    if (snapshot.emotions.fatigue > 70) return 'کمی خسته ام، ولی هنوز حواسم به کارهای مزرعه هست.';
+    if (snapshot.emotions.fatigue > 70) return 'کمی خسته‌ام، ولی هنوز حواسم به کارهای مزرعه هست.';
     if (snapshot.emotions.worry > 45) return 'کمی نگرانم، بیشتر به خاطر شرایط اطراف و کارهایی که باید مراقبشان باشم.';
-    return 'آرامم. دارم روزم را با ریتم مزرعه جلو می برم.';
+    return 'آرامم. دارم روزم را با ریتم مزرعه جلو می‌برم.';
   }
 
-  return 'شنیدم. حرفت را به خاطر می سپارم و با زندگی ام در مزرعه هماهنگش می کنم.';
+  return 'شنیدم. حرفت را به خاطر می‌سپارم و مثل یک آدم عادی در همین مزرعه به آن فکر می‌کنم.';
 }
 
 module.exports = {
