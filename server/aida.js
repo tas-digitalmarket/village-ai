@@ -14,6 +14,21 @@ const {
   searchAidaMemories,
   getState
 } = require('./database');
+const {
+  parseMinutes,
+  absoluteMinute,
+  ensureAidaMind,
+  addShortMemory,
+  applyAidaBodyNeeds,
+  applyAidaWorldDrift,
+  buildAidaRiskProfile,
+  ensureAidaDailyPlan,
+  chooseAidaGoalTask,
+  applyAidaActionConsequences,
+  buildAidaReflection,
+  maybeCreateAidaWorldEvent,
+  makeTask
+} = require('./aida-life');
 
 const AIDA_LOCATIONS = {
   home: { x: 18, z: 36 },
@@ -30,20 +45,20 @@ const AIDA_LOCATIONS = {
 };
 
 const ROUTINE = [
-  { from: 0, to: 6 * 60, action: 'sleeping', label: 'Sleeping in her home', location: 'home_bed', mood: 'tired' },
-  { from: 6 * 60, to: 7 * 60, action: 'eating', label: 'Breakfast at her table', location: 'home_table', mood: 'peaceful' },
-  { from: 7 * 60, to: 9 * 60, action: 'morning_garden', label: 'Morning garden care', location: 'garden', mood: 'focused' },
-  { from: 9 * 60, to: 10 * 60 + 30, action: 'checking_herbs', label: 'Sorting herbs at her workbench', location: 'herb_workbench', mood: 'curious' },
-  { from: 10 * 60 + 30, to: 12 * 60, action: 'village_errand', label: 'Walking to the village square', location: 'village_square', mood: 'content' },
-  { from: 12 * 60, to: 13 * 60, action: 'eating', label: 'Lunch at home', location: 'home_table', mood: 'content' },
-  { from: 13 * 60, to: 14 * 60, action: 'resting', label: 'Quiet rest inside her home', location: 'home', mood: 'peaceful' },
-  { from: 14 * 60, to: 16 * 60, action: 'animal_care', label: 'Tending small animals', location: 'barn', mood: 'focused' },
-  { from: 16 * 60, to: 17 * 60, action: 'watering_garden', label: 'Watering her field and garden', location: 'field', mood: 'focused' },
-  { from: 17 * 60, to: 18 * 60 + 30, action: 'neighbor_walk', label: 'Walking near Arash road', location: 'arash_path', mood: 'curious' },
-  { from: 18 * 60 + 30, to: 19 * 60 + 30, action: 'eating', label: 'Simple dinner at home', location: 'home_table', mood: 'content' },
-  { from: 19 * 60 + 30, to: 21 * 60, action: 'evening_prayer', label: 'Evening prayer and quiet thoughts', location: 'prayer_house', mood: 'peaceful' },
-  { from: 21 * 60, to: 22 * 60, action: 'checking_herbs', label: 'Writing herb notes at home', location: 'herb_workbench', mood: 'curious' },
-  { from: 22 * 60, to: 24 * 60, action: 'sleeping', label: 'Sleeping in her home', location: 'home_bed', mood: 'tired' }
+  { from: 0, to: 6 * 60, action: 'sleeping', label: 'Sleeping in her home', location: 'home_bed', mood: 'tired', duration: 60 },
+  { from: 6 * 60, to: 7 * 60, action: 'eating', label: 'Breakfast at her table', location: 'home_table', mood: 'peaceful', duration: 25 },
+  { from: 7 * 60, to: 9 * 60, action: 'morning_garden', label: 'Morning garden care', location: 'garden', mood: 'focused', duration: 35 },
+  { from: 9 * 60, to: 10 * 60 + 30, action: 'checking_herbs', label: 'Sorting herbs at her workbench', location: 'herb_workbench', mood: 'curious', duration: 35 },
+  { from: 10 * 60 + 30, to: 12 * 60, action: 'village_errand', label: 'Walking to the village square', location: 'village_square', mood: 'content', duration: 35 },
+  { from: 12 * 60, to: 13 * 60, action: 'eating', label: 'Lunch at home', location: 'home_table', mood: 'content', duration: 25 },
+  { from: 13 * 60, to: 14 * 60, action: 'resting', label: 'Quiet rest inside her home', location: 'home', mood: 'peaceful', duration: 35 },
+  { from: 14 * 60, to: 16 * 60, action: 'animal_care', label: 'Tending small animals', location: 'barn', mood: 'focused', duration: 35 },
+  { from: 16 * 60, to: 17 * 60, action: 'watering_garden', label: 'Watering her field and garden', location: 'field', mood: 'focused', duration: 30 },
+  { from: 17 * 60, to: 18 * 60 + 30, action: 'shared_path_garden', label: 'Shared path garden work with Arash', location: 'arash_path', mood: 'curious', duration: 35, source: 'social' },
+  { from: 18 * 60 + 30, to: 19 * 60 + 30, action: 'eating', label: 'Simple dinner at home', location: 'home_table', mood: 'content', duration: 25 },
+  { from: 19 * 60 + 30, to: 21 * 60, action: 'evening_prayer', label: 'Evening prayer and quiet thoughts', location: 'prayer_house', mood: 'peaceful', duration: 35 },
+  { from: 21 * 60, to: 22 * 60, action: 'checking_herbs', label: 'Writing herb notes at home', location: 'herb_workbench', mood: 'curious', duration: 30 },
+  { from: 22 * 60, to: 24 * 60, action: 'sleeping', label: 'Sleeping in her home', location: 'home_bed', mood: 'tired', duration: 60 }
 ];
 
 const PROVIDERS = [
@@ -66,44 +81,162 @@ const PROVIDERS = [
   }
 ].filter(p => p.key && p.key !== 'MISSING_KEY');
 
-function parseMinutes(time) {
-  const [h = 0, m = 0] = String(time || '06:00').split(':').map(Number);
-  return h * 60 + m;
-}
-
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-function updateAidaRoutine(worldTime) {
-  const base = getAidaState();
-  const minute = parseMinutes(worldTime);
-  const step = ROUTINE.find(item => minute >= item.from && minute < item.to) || ROUTINE[0];
-  const pos = AIDA_LOCATIONS[step.location] || AIDA_LOCATIONS.home;
-  const sleeping = step.action === 'sleeping';
-  const eating = step.action === 'eating';
-  const next = {
-    ...base,
-    current_action: step.action,
-    active_task_label: step.label,
-    active_task_source: 'daily_routine',
+function routineStep(minute) {
+  return ROUTINE.find(item => minute >= item.from && minute < item.to) || ROUTINE[0];
+}
+
+function taskKey(day, task, minute) {
+  return `${day}:${task.source || 'routine'}:${task.goal_id || task.action}:${Math.floor(minute / Math.max(1, task.duration || 30))}`;
+}
+
+function startAidaTask(state, task, absMinute, worldTime) {
+  const location = task.location || 'home';
+  const pos = AIDA_LOCATIONS[location] || AIDA_LOCATIONS.home;
+  return addShortMemory({
+    ...state,
+    current_action: task.action || 'resting',
+    active_task_label: task.label || task.action || 'Aida task',
+    active_task_source: task.source || 'routine',
+    active_task_reason: task.reason || null,
+    active_task_location: location,
+    active_goal_id: task.goal_id || null,
+    active_goal_title: task.goal_title || null,
+    active_risk_id: task.risk_id || null,
+    task_started_at_abs: absMinute,
+    task_ends_at_abs: absMinute + Math.max(1, Number(task.duration || 30)),
+    mood: task.mood || state.mood || 'focused',
     home_label: 'Aida homestead',
-    mood: step.mood,
     position_x: pos.x,
-    position_z: pos.z,
-    energy: clamp((base.energy || 82) + (sleeping ? 0.6 : eating || step.action === 'resting' ? 0.08 : -0.18), 10, 100),
-    hunger: clamp((base.hunger || 24) + (eating ? -0.9 : sleeping ? 0.06 : 0.14), 0, 100),
-    relationship_arash: clamp(base.relationship_arash || 28, 0, 100)
+    position_y: 0,
+    position_z: pos.z
+  }, `Aida started ${task.label || task.action}.`, worldTime);
+}
+
+function completeAidaTask(state, weather, worldTime) {
+  const action = state.current_action;
+  if (!action || action === 'idle') return { state, thought: null };
+  const result = applyAidaActionConsequences(state, action, state.active_task_location, weather, worldTime);
+  const label = state.active_task_label || action;
+  const notes = result.outcome.notes.length ? ` (${result.outcome.notes.join(', ')})` : '';
+  const thought = result.outcome.success
+    ? `کار ${label} را تمام کردم و اثرش را در خانه و باغچه‌ام می‌بینم.`
+    : `کار ${label} کامل پیش نرفت؛ باید بعدا دوباره به آن برگردم.`;
+  addAidaMemory(`Aida completed ${label} at ${worldTime}.${notes}`, { type: action === 'shared_path_garden' ? 'social' : 'life', importance: result.outcome.success ? 6 : 7 });
+  return {
+    state: addShortMemory({
+      ...result.state,
+      current_action: 'idle',
+      active_task_label: null,
+      active_task_source: null,
+      active_task_reason: null,
+      active_task_location: null,
+      active_goal_id: null,
+      active_goal_title: null,
+      active_risk_id: null,
+      task_started_at_abs: null,
+      task_ends_at_abs: null
+    }, `Aida finished ${label}.`, worldTime),
+    thought
   };
-  saveAidaState(next);
-  return next;
+}
+
+function chooseAidaTask(state, risk, minute) {
+  const critical = risk.risks?.find(item => item.task && item.severity >= 88);
+  if (critical) return { ...critical.task, risk_id: critical.id, source: 'risk' };
+  const urgent = risk.risks?.find(item => item.task && item.severity >= 58);
+  if (urgent) return { ...urgent.task, risk_id: urgent.id, source: urgent.task.source || 'need' };
+  const goalTask = chooseAidaGoalTask(state, minute);
+  if (goalTask) return goalTask;
+  const routine = routineStep(minute);
+  return { ...routine, source: routine.source || 'routine' };
+}
+
+function updateAidaRoutine(worldTime, context = {}) {
+  const day = context.day || getState().day || 1;
+  const weather = context.weather || getState().weather || 'sunny';
+  const minute = parseMinutes(worldTime);
+  const abs = absoluteMinute(day, worldTime);
+  let state = ensureAidaMind(getAidaState());
+  let thought = null;
+
+  state = { ...state, world_time: worldTime, day, home_label: 'Aida homestead' };
+  state = applyAidaWorldDrift(state, weather);
+  state = applyAidaBodyNeeds(state, weather);
+
+  let risk = buildAidaRiskProfile(state, weather, minute);
+  state = ensureAidaDailyPlan(state, risk, worldTime, day);
+
+  if (state.current_action !== 'idle' && !state.task_ends_at_abs) {
+    state = { ...state, current_action: 'idle', active_task_label: null, task_started_at_abs: null, task_ends_at_abs: null };
+  }
+
+  if (state.current_action !== 'idle' && state.task_ends_at_abs && abs >= Number(state.task_ends_at_abs)) {
+    const completed = completeAidaTask(state, weather, worldTime);
+    state = completed.state;
+    thought = completed.thought;
+  }
+
+  risk = buildAidaRiskProfile(state, weather, minute);
+  state = ensureAidaDailyPlan(state, risk, worldTime, day);
+
+  if (minute >= 21 * 60 + 40) {
+    const reflection = buildAidaReflection(state, risk, worldTime, day);
+    if (reflection) {
+      state = reflection.state;
+      addAidaMemory(reflection.text, { type: 'reflection', importance: reflection.importance });
+    }
+  }
+
+  const eventResult = maybeCreateAidaWorldEvent(state, risk, weather, worldTime, day);
+  if (eventResult) {
+    state = eventResult.state;
+    addAidaMemory(`Aida world event: ${eventResult.event.title}. ${eventResult.event.note}`, { type: 'world', importance: eventResult.event.severity >= 70 ? 8 : 5 });
+    thought = thought || eventResult.event.note;
+  }
+
+  if (state.current_action === 'idle') {
+    const task = chooseAidaTask(state, risk, minute);
+    const key = taskKey(day, task, minute);
+    if (state.last_aida_task_key !== key || task.source !== 'routine') {
+      state = startAidaTask({ ...state, last_aida_task_key: key }, task, abs, worldTime);
+      thought = thought || (task.action === 'shared_path_garden'
+        ? 'امروز کنار مسیر خاکی با آرش کمی کار مشترک می‌کنم؛ شاید همین کار کوچک ما را بهتر با هم آشنا کند.'
+        : `${task.label || task.action} را شروع می‌کنم؛ این برای امروز مهم است.`);
+      addAidaMemory(`Aida started ${task.label || task.action} at ${worldTime}.`, { type: task.action === 'shared_path_garden' ? 'social' : 'life', importance: task.source === 'risk' ? 8 : 5 });
+    }
+  }
+
+  risk = buildAidaRiskProfile(state, weather, minute);
+  state = {
+    ...state,
+    risk_state: risk,
+    visible_feedback: buildAidaVisibleFeedback(state, risk, thought),
+    thought: thought || state.thought || null
+  };
+  saveAidaState(state);
+  return state;
+}
+
+function buildAidaVisibleFeedback(state, risk, thought) {
+  const world = state.aida_world || {};
+  return {
+    headline: state.active_task_label || 'Watching her homestead',
+    body: thought || state.active_task_reason || risk?.summary || 'Aida is reading the needs of her home and garden.',
+    garden: world.garden,
+    animals: world.animals,
+    home: world.home
+  };
 }
 
 function buildAidaSocialDialogue(arashState = getState(), aidaState = getAidaState(), worldTime = arashState.world_time || '06:00') {
   const minute = parseMinutes(worldTime);
   const arashAction = arashState.active_task_label || arashState.current_action || 'کارهای مزرعه';
   const aidaAction = aidaState.active_task_label || aidaState.current_action || 'کارهای خانه';
-  const closeWindow = minute >= 17 * 60 && minute < 18 * 60 + 30;
+  const sharedWork = aidaState.current_action === 'shared_path_garden' || (minute >= 17 * 60 && minute < 18 * 60 + 30);
   const morningWindow = minute >= 7 * 60 && minute < 9 * 60;
   const nightWindow = minute >= 22 * 60 || minute < 6 * 60;
 
@@ -113,10 +246,10 @@ function buildAidaSocialDialogue(arashState = getState(), aidaState = getAidaSta
       { speaker: 'aida', text: 'من هم در خانه‌ام آرام می‌خوابم؛ فردا باغچه کار دارد.' }
     ];
   }
-  if (closeWindow) {
+  if (sharedWork) {
     return [
-      { speaker: 'arash', text: 'آیدا را نزدیک مسیر دیدم؛ روستا کم‌کم زنده‌تر می‌شود.' },
-      { speaker: 'aida', text: 'از کنار راه آرش می‌گذرم؛ شاید کم‌کم همسایه‌های خوبی شویم.' }
+      { speaker: 'arash', text: 'این مسیر بین خانه‌ها اگر مرتب بماند، رفت‌وآمدمان راحت‌تر می‌شود.' },
+      { speaker: 'aida', text: 'درست می‌گویی؛ من کنار راه چند بوته هم می‌کارم تا اینجا زنده‌تر شود.' }
     ];
   }
   if (morningWindow) {
@@ -126,7 +259,7 @@ function buildAidaSocialDialogue(arashState = getState(), aidaState = getAidaSta
     ];
   }
   return [
-    { speaker: 'arash', text: `فعلاً مشغول ${arashAction} هستم.` },
+    { speaker: 'arash', text: `فعلا مشغول ${arashAction} هستم.` },
     { speaker: 'aida', text: `من هم ${aidaAction} را انجام می‌دهم.` }
   ];
 }
@@ -157,20 +290,20 @@ function fallbackReply(message, state, arashState, memories) {
   const text = String(message || '').toLowerCase();
   if (/سلام|درود|hello|hi/.test(text)) return 'سلام خالق. من آیدا هستم؛ در خانه جنوبی روستا زندگی می‌کنم و روزم بین باغچه، گیاهان و حیوانات می‌گذرد.';
   if (/تو کیستی|کی هستی|who are you/.test(text)) return 'من آیدا هستم؛ زنی از همین روستا که بیشتر با باغچه، گیاهان و مراقبت از جانوران سر و کار دارد.';
-  if (/آرش|arash/.test(text)) return `آرش را می‌شناسم و حس می‌کنم همسایه مهمی برای این روستا می‌شود. فعلاً رابطه‌مان آرام و تازه است.`;
+  if (/آرش|arash/.test(text)) return 'آرش را می‌شناسم و حس می‌کنم همسایه مهمی برای این روستا می‌شود. فعلا رابطه‌مان آرام و تازه است.';
   if (/کجا هستی|where are you/.test(text)) return `الان نزدیک ${state.active_task_label || 'خانه‌ام'} هستم و روزم را آرام جلو می‌برم.`;
   const memory = memories?.[0]?.content;
   return memory ? `شنیدم. این را کنار چیزهایی که برایم مهم است نگه می‌دارم؛ مثل این خاطره: ${memory}` : 'شنیدم. با دقت به حرفت فکر می‌کنم و می‌گذارم روی تصمیم‌ها و زندگی‌ام اثر بگذارد.';
 }
 
 async function processAidaMessage(message) {
-  const state = getAidaState();
+  const state = ensureAidaMind(getAidaState());
   const arashState = getState();
   const recent = getAidaMemories(6);
   const relevant = searchAidaMemories(message, 6, { types: ['creator', 'social', 'life'] });
   const relation = state.relationship_arash || 28;
 
-  const systemPrompt = `You are Aida, an ordinary human villager living in her own homestead near Arash.\n\nIdentity:\n- Name: Aida\n- Role: herbalist, gardener, and animal keeper\n- Home: Aida homestead, the southern homestead connected to the village square by a dirt road\n- Personality: observant, warm but not overly submissive, thoughtful, practical, quietly curious\n- Creator relationship: the Creator brought this world into being and may speak with you directly\n- Arash relationship: Arash is a nearby farmer. Your relationship is still new and should evolve slowly through shared memories and future interactions. Current closeness: ${relation}/100\n\nCurrent state:\n- Mood: ${state.mood || 'curious'}\n- Current activity: ${state.active_task_label || state.current_action || 'settling into village life'}\n- Aida home: ${state.home_label || 'Aida homestead'}\n- Arash current activity: ${arashState.current_action || 'idle'}\n\nRecent memories:\n${recent.map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No recent memories.'}\n\nRelevant memories:\n${relevant.map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No strongly relevant memory.'}\n\nAnswer in natural Persian. Do not mention percentages, JSON, model names, or internal systems unless directly asked.\nReturn raw JSON only with this shape:\n{\n  "aida_response": "one or two warm natural Persian sentences",\n  "memory": "short memory worth keeping",\n  "relationship_delta": 0\n}`;
+  const systemPrompt = `You are Aida, an ordinary human villager living in her own homestead near Arash.\n\nIdentity:\n- Name: Aida\n- Role: herbalist, gardener, and animal keeper\n- Home: Aida homestead, the southern homestead connected to the village square by a dirt road\n- Personality: observant, warm but not overly submissive, thoughtful, practical, quietly curious\n- Creator relationship: the Creator brought this world into being and may speak with you directly\n- Arash relationship: Arash is a nearby farmer. Your relationship is still new and should evolve slowly through shared memories and future interactions. Current closeness: ${relation}/100\n\nCurrent state:\n- Mood: ${state.mood || 'curious'}\n- Current activity: ${state.active_task_label || state.current_action || 'settling into village life'}\n- Main risk: ${state.risk_state?.summary || 'none'}\n- Aida home: ${state.home_label || 'Aida homestead'}\n- Arash current activity: ${arashState.current_action || 'idle'}\n\nRecent memories:\n${recent.map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No recent memories.'}\n\nRelevant memories:\n${relevant.map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No strongly relevant memory.'}\n\nAnswer in natural Persian. Do not mention percentages, JSON, model names, or internal systems unless directly asked.\nReturn raw JSON only with this shape:\n{\n  "aida_response": "one or two warm natural Persian sentences",\n  "memory": "short memory worth keeping",\n  "relationship_delta": 0\n}`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -183,7 +316,7 @@ async function processAidaMessage(message) {
         const parsed = extractJSON(await callProvider(provider, model, messages));
         const response = String(parsed.aida_response || '').trim() || fallbackReply(message, state, arashState, relevant);
         const delta = clamp(Number(parsed.relationship_delta || 0), -3, 3);
-        const next = { ...state, relationship_arash: clamp((state.relationship_arash || 28) + delta, 0, 100) };
+        const next = addShortMemory({ ...state, relationship_arash: clamp((state.relationship_arash || 28) + delta, 0, 100) }, `Creator said: ${String(message || '').slice(0, 100)}`, state.world_time);
         saveAidaState(next);
         if (parsed.memory) addAidaMemory(parsed.memory, { type: /آرش|arash/.test(parsed.memory) ? 'social' : 'creator', importance: 7 });
         return { aida_response: response, state: next };
@@ -194,8 +327,10 @@ async function processAidaMessage(message) {
   }
 
   const fallback = fallbackReply(message, state, arashState, relevant);
+  const next = addShortMemory(state, `Creator spoke with Aida: ${String(message || '').slice(0, 100)}`, state.world_time);
+  saveAidaState(next);
   addAidaMemory(`Creator spoke with Aida: ${String(message || '').slice(0, 120)}`, { type: 'creator', importance: 6 });
-  return { aida_response: fallback, state };
+  return { aida_response: fallback, state: next };
 }
 
 module.exports = { updateAidaRoutine, processAidaMessage, buildAidaSocialDialogue, AIDA_LOCATIONS };
