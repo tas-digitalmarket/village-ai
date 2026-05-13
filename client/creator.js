@@ -48,8 +48,8 @@ export class CreatorPanel {
     this.target = target === 'aida' ? 'aida' : 'arash';
     this.$arashTab?.classList.toggle('active', this.target === 'arash');
     this.$aidaTab?.classList.toggle('active', this.target === 'aida');
-    if (this.$title) this.$title.textContent = this.target === 'aida' ? 'Creator Conversation' : 'Creator Directives';
-    if (this.$input) this.$input.placeholder = this.target === 'aida' ? 'Speak with Aida...' : 'Give Arash a command...';
+    if (this.$title) this.$title.textContent = 'Creator Conversation';
+    if (this.$input) this.$input.placeholder = this.target === 'aida' ? 'Speak with Aida...' : 'Speak with Arash...';
     if (reload) await this._loadHistory();
     else await this._loadHistory();
   }
@@ -59,7 +59,7 @@ export class CreatorPanel {
     this.$messages.innerHTML = '';
     this._addMessage('system', this.target === 'aida'
       ? 'Aida is listening with care.'
-      : 'Arash is listening to your permanent instructions.', false);
+      : 'Arash is listening as a person. Ask normally, or give him a clear task when you want action.', false);
     try {
       const endpoint = this.target === 'aida' ? '/api/aida-messages' : '/api/creator-messages';
       const res = await fetch(endpoint);
