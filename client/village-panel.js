@@ -2,10 +2,12 @@ const dialogueEl = document.getElementById('arash-aida-dialogue');
 const pillEl = document.getElementById('arash-aida-pill');
 const worldMoodEl = document.getElementById('world-status-mood');
 const DIALOGUE_API = '/api/dialogue-log';
+const BOTTOM_LOCK_THRESHOLD = 36;
 
 let lastDialogueKey = '';
 let lastRenderedKey = '';
 let latestMessages = [];
+let userReadingHistory = false;
 
 function speakerKey(speaker) {
   return speaker === 'aida' ? 'aida' : 'arash';
@@ -34,12 +36,27 @@ function messageKey(messages) {
   return messages.map(msg => `${msg.id || ''}:${msg.speaker}:${msg.text}:${msg.world_time || ''}`).join('|');
 }
 
+function isNearBottom() {
+  if (!dialogueEl) return true;
+  return dialogueEl.scrollHeight - dialogueEl.scrollTop - dialogueEl.clientHeight <= BOTTOM_LOCK_THRESHOLD;
+}
+
+function updateReadingMode() {
+  if (!dialogueEl) return;
+  userReadingHistory = !isNearBottom();
+}
+
 function renderMessages(messages = []) {
   if (!dialogueEl) return;
   const clean = messages.filter(msg => msg && msg.text).slice(-80);
   const key = messageKey(clean);
   const alreadyRendered = dialogueEl.querySelectorAll('.chat-message').length > 0;
   if (key && key === lastRenderedKey && alreadyRendered) return;
+
+  const shouldStayAtBottom = !userReadingHistory && isNearBottom();
+  const previousDistanceFromBottom = dialogueEl.scrollHeight - dialogueEl.scrollTop;
+  const previousScrollTop = dialogueEl.scrollTop;
+
   lastRenderedKey = key;
   latestMessages = clean;
 
@@ -62,7 +79,14 @@ function renderMessages(messages = []) {
     dialogueEl.append(row);
   });
 
-  dialogueEl.scrollTop = dialogueEl.scrollHeight;
+  if (shouldStayAtBottom) {
+    dialogueEl.scrollTop = dialogueEl.scrollHeight;
+  } else if (userReadingHistory) {
+    dialogueEl.scrollTop = Math.max(0, dialogueEl.scrollHeight - previousDistanceFromBottom);
+  } else {
+    dialogueEl.scrollTop = previousScrollTop;
+  }
+
   if (pillEl) {
     const hasArash = clean.some(msg => speakerKey(msg.speaker) === 'arash');
     const hasAida = clean.some(msg => speakerKey(msg.speaker) === 'aida');
@@ -125,6 +149,7 @@ function restoreChatIfNeeded() {
 }
 
 if (dialogueEl) {
+  dialogueEl.addEventListener('scroll', updateReadingMode, { passive: true });
   new MutationObserver(restoreChatIfNeeded).observe(dialogueEl, { childList: true });
 }
 
