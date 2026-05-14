@@ -163,6 +163,14 @@ function updateSocialDialogue(lines, state = {}) {
   const normalized = normalizeDialogueLines(lines, state).slice(-4);
   latestDialogue = normalized;
 
+  if (socialDialogueEl?.classList.contains('social-chatbox')) {
+    if (socialPillEl) {
+      const hasBoth = normalized.some(line => line.speaker === 'arash') && normalized.some(line => line.speaker === 'aida');
+      socialPillEl.textContent = hasBoth ? 'conversation' : 'nearby';
+    }
+    return;
+  }
+
   if (socialDialogueEl) {
     socialDialogueEl.replaceChildren();
     normalized.forEach((line) => {
