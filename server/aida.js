@@ -12,8 +12,14 @@ const {
   getAidaMemories,
   addAidaMemory,
   searchAidaMemories,
-  getState
+  getState,
+  getPlan,
+  savePlan,
+  getGoals,
+  getRelationship
 } = require('./database');
+const { createPlan, getNextPlanStep, markPlanStepDone, invalidatePlan } = require('./agent-planner');
+const { decideNextAction } = require('./life-brain');
 const {
   parseMinutes,
   absoluteMinute,
@@ -155,7 +161,7 @@ function chooseAidaTask(state, risk, minute) {
   return { ...routine, source: routine.source || 'routine' };
 }
 
-function updateAidaRoutine(worldTime, context = {}) {
+async function updateAidaRoutine(worldTime, context = {}) {
   const day = context.day || getState().day || 1;
   const weather = context.weather || getState().weather || 'sunny';
   const minute = parseMinutes(worldTime);
@@ -199,14 +205,106 @@ function updateAidaRoutine(worldTime, context = {}) {
   }
 
   if (state.current_action === 'idle') {
-    const task = chooseAidaTask(state, risk, minute);
-    const key = taskKey(day, task, minute);
-    if (state.last_aida_task_key !== key || task.source !== 'routine') {
-      state = startAidaTask({ ...state, last_aida_task_key: key }, task, abs, worldTime);
-      thought = thought || (task.action === 'shared_path_garden'
-        ? 'امروز کنار مسیر خاکی با آرش کمی کار مشترک می‌کنم؛ شاید همین کار کوچک ما را بهتر با هم آشنا کند.'
-        : `${task.label || task.action} را شروع می‌کنم؛ این برای امروز مهم است.`);
-      addAidaMemory(`Aida started ${task.label || task.action} at ${worldTime}.`, { type: task.action === 'shared_path_garden' ? 'social' : 'life', importance: task.source === 'risk' ? 8 : 5 });
+    // Priority: Critical risk -> Planner step -> Create plan -> Life Brain -> Goal task -> Routine
+    const critical = risk.risks?.find(item => item.task && item.severity >= 88);
+    let task = null;
+    
+    if (critical) {
+      task = { ...critical.task, risk_id: critical.id, source: 'risk' };
+    }
+
+    if (!task) {
+      let currentPlan = getPlan('aida');
+      
+      if (currentPlan && currentPlan.status === 'active') {
+        const step = getNextPlanStep('aida', currentPlan);
+        if (step) {
+          task = {
+            source: 'planner',
+            label: step.action,
+            action: step.action,
+            location: step.location,
+            duration: 28,
+            reason: step.reason,
+            goal_id: currentPlan.active_goal,
+            goal_title: currentPlan.active_goal
+          };
+        }
+      }
+
+      const lastPlannerCall = Number(state.last_aida_planner_call_abs || 0);
+      const shouldCallPlanner = !task && (!currentPlan || currentPlan.status !== 'active' || (abs - lastPlannerCall >= 20));
+
+      if (shouldCallPlanner) {
+        const goals = getGoals('aida');
+        const memories = getAidaMemories(5);
+        const relationships = getRelationship('arash_aida');
+        try {
+          currentPlan = await createPlan('aida', state, state.aida_world || {}, memories, relationships, goals, []);
+          savePlan('aida', currentPlan);
+          state.last_aida_planner_call_abs = abs;
+          const step = getNextPlanStep('aida', currentPlan);
+          if (step) {
+            task = {
+              source: 'planner',
+              label: step.action,
+              action: step.action,
+              location: step.location,
+              duration: 28,
+              reason: step.reason,
+              goal_id: currentPlan.active_goal,
+              goal_title: currentPlan.active_goal
+            };
+            console.log(`[Planner:Aida] Plan created for goal: ${currentPlan.active_goal}. Next: ${step.action}`);
+          }
+        } catch (planErr) {
+          console.error('[Planner:Aida] createPlan failed:', planErr.message);
+        }
+      }
+
+      if (!task) {
+        try {
+          const goals = getGoals('aida');
+          const memories = getAidaMemories(5);
+          const relationships = getRelationship('arash_aida');
+          const lifeDecision = await decideNextAction('aida', state, state.aida_world || {}, memories, relationships, [], goals);
+          task = {
+            source: 'life_brain',
+            label: lifeDecision.action,
+            action: lifeDecision.action,
+            location: lifeDecision.location,
+            duration: lifeDecision.duration,
+            reason: lifeDecision.reason,
+            goal_id: lifeDecision.goal,
+            thought_override: lifeDecision.thought
+          };
+          console.log(`[LifeBrain:Aida] chose ${lifeDecision.action} at ${lifeDecision.location}`);
+        } catch (lbErr) {
+          console.error('[LifeBrain:Aida] failed:', lbErr.message);
+        }
+      }
+
+      if (!task) {
+        // Fallback: goal task or routine
+        const goalTask = chooseAidaGoalTask(state, minute);
+        const urgent = risk.risks?.find(item => item.task && item.severity >= 58);
+        task = goalTask || (urgent ? { ...urgent.task, risk_id: urgent.id, source: urgent.task.source || 'need' } : null) || { ...routineStep(minute), source: 'routine' };
+      }
+    }
+
+    if (task) {
+      const key = taskKey(day, task, minute);
+      const isNewTask = state.last_aida_task_key !== key || task.source !== 'routine';
+      if (isNewTask) {
+        state = startAidaTask({ ...state, last_aida_task_key: key }, task, abs, worldTime);
+        thought = thought || task.thought_override || (task.action === 'shared_path_garden'
+          ? 'امروز کنار مسیر خاکی با آرش کمی کار مشترک می‌کنم.'
+          : `${task.label || task.action} را شروع می‌کنم.`);
+        addAidaMemory(`Aida started ${task.label || task.action} at ${worldTime}.${task.reason ? ` Reason: ${task.reason}.` : ''}`, {
+          type: task.action === 'shared_path_garden' ? 'social' : 'life',
+          importance: task.source === 'risk' ? 8 : 5
+        });
+      }
     }
   }
 

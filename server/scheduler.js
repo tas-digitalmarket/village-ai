@@ -189,7 +189,7 @@ async function runMinutePulse(broadcast) {
     let riskState = buildRiskProfile(nextState, worldState, weather, minute);
     nextState = ensureDailyPlan(nextState, worldState, riskState);
     let thought = null;
-    let aidaState = updateAidaRoutine(worldTime);
+    let aidaState = await updateAidaRoutine(worldTime);
 
     logWeather(weather, worldTime);
     if (minute <= 1) firedKeys.clear();
@@ -341,6 +341,7 @@ async function runMinutePulse(broadcast) {
         ida_state: aidaState,
         social_dialogue: aidaState.social_dialogue,
         active_plan: getPlan('arash'),
+        aida_active_plan: getPlan('aida'),
         apiKeyMissing: !hasAiKey
       }
     });
