@@ -10,7 +10,7 @@ import { buildWorldExpansion } from './world-expansion.js?v=2';
 import { buildAidaHomeInterior } from './aida-home-interior.js?v=1';
 import { Villager } from './character.js?v=7';
 import { AidaCharacter } from './ida-character.js?v=1';
-import { CharacterSpeechBubbles } from './speech-bubbles.js?v=1';
+import { CharacterSpeechBubbles, formatCharacterBubble, sanitizeBubbleText } from './speech-bubbles.js?v=2';
 import { WeatherFX } from './weather-fx.js?v=7';
 import { HUD } from './hud.js?v=7';
 import { CreatorPanel } from './creator.js?v=8';
@@ -184,13 +184,28 @@ function updateSocialDialogue(lines, state = {}) {
 }
 
 function updateOverheadBubbles(state = {}) {
-  const lines = normalizeDialogueLines(state.social_dialogue || state.ida_state?.social_dialogue || latestDialogue, state);
-  const reversed = [...lines].reverse();
-  const arashLine = reversed.find(line => line.speaker !== 'aida');
-  const aidaLine = reversed.find(line => line.speaker === 'aida');
+  const aidaState = state.ida_state || {};
+  const lines     = normalizeDialogueLines(
+    state.social_dialogue || aidaState.social_dialogue || latestDialogue, state
+  );
+  const reversed  = [...lines].reverse();
+  const arashLine = reversed.find(l => l.speaker !== 'aida');
+  const aidaLine  = reversed.find(l => l.speaker === 'aida');
 
-  speechBubbles.setText('arash', arashLine?.text || state.thought || 'I am thinking about the farm.');
-  speechBubbles.setText('aida', aidaLine?.text || state.ida_state?.active_task_label || 'I am thinking about my homestead.');
+  // Arash: prefer recent dialogue if it's real Persian, else use formatter
+  const arashDialogue = arashLine?.text;
+  const arashText = (arashDialogue && /[\u0600-\u06FF]/.test(arashDialogue))
+    ? sanitizeBubbleText(arashDialogue, 'arash', state.current_action)
+    : formatCharacterBubble('arash', state);
+
+  // Aida: same
+  const aidaDialogue = aidaLine?.text;
+  const aidaText = (aidaDialogue && /[\u0600-\u06FF]/.test(aidaDialogue))
+    ? sanitizeBubbleText(aidaDialogue, 'aida', aidaState.current_action)
+    : formatCharacterBubble('aida', aidaState);
+
+  speechBubbles.setText('arash', arashText);
+  speechBubbles.setText('aida',  aidaText);
 }
 
 const SKY_PRESETS = {
@@ -332,12 +347,14 @@ function connectWS() {
       if (msg.type === 'directives') hud.updateSchedule(msg.data);
       if (msg.type === 'creator_message') {
         creator.onNewMessage(msg.data.arash_response);
-        speechBubbles.setText('arash', msg.data.arash_response || 'I heard you.');
+        const crText = sanitizeBubbleText(msg.data.arash_response || '', 'arash', '');
+        speechBubbles.setText('arash', crText || formatCharacterBubble('arash', {}));
       }
       if (msg.type === 'aida_message') {
         if (msg.data?.ida_state) aida.setState(msg.data.ida_state);
         creator.onNewAidaMessage(msg.data?.aida_response || '');
-        speechBubbles.setText('aida', msg.data?.aida_response || 'I heard you.');
+        const aidaCrText = sanitizeBubbleText(msg.data?.aida_response || '', 'aida', '');
+        speechBubbles.setText('aida', aidaCrText || formatCharacterBubble('aida', msg.data?.ida_state || {}));
       }
     } catch (e) { /* ignore */ }
   };
