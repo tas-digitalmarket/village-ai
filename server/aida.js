@@ -96,6 +96,10 @@ function routineStep(minute) {
 }
 
 function taskKey(day, task, minute) {
+  // For planner/life_brain tasks, use step_id or action+location to ensure uniqueness per step
+  if (task.source === 'planner' || task.source === 'life_brain') {
+    return `${day}:${task.source}:${task.step_id || task.action}:${task.location || ''}`;
+  }
   return `${day}:${task.source || 'routine'}:${task.goal_id || task.action}:${Math.floor(minute / Math.max(1, task.duration || 30))}`;
 }
 
@@ -131,6 +135,21 @@ function completeAidaTask(state, weather, worldTime) {
   const thought = result.outcome.success
     ? `کار ${label} را تمام کردم و اثرش را در خانه و باغچه‌ام می‌بینم.`
     : `کار ${label} کامل پیش نرفت؛ باید بعدا دوباره به آن برگردم.`;
+
+  // Mark the matching step done in Aida's active plan
+  try {
+    let currentPlan = getPlan('aida');
+    if (currentPlan && currentPlan.status === 'active') {
+      const step = currentPlan.steps.find(s => s.action === action && s.status === 'pending');
+      if (step) {
+        currentPlan = markPlanStepDone('aida', currentPlan, step.id);
+        savePlan('aida', currentPlan);
+      }
+    }
+  } catch (planErr) {
+    console.error('[Planner:Aida] completeAidaTask plan update failed:', planErr.message);
+  }
+
   addAidaMemory(`Aida completed ${label} at ${worldTime}.${notes}`, { type: action === 'shared_path_garden' ? 'social' : 'life', importance: result.outcome.success ? 6 : 7 });
   return {
     state: addShortMemory({
@@ -221,6 +240,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
         if (step) {
           task = {
             source: 'planner',
+            step_id: step.id,
             label: step.action,
             action: step.action,
             location: step.location,
@@ -247,6 +267,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
           if (step) {
             task = {
               source: 'planner',
+              step_id: step.id,
               label: step.action,
               action: step.action,
               location: step.location,
@@ -255,7 +276,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
               goal_id: currentPlan.active_goal,
               goal_title: currentPlan.active_goal
             };
-            console.log(`[Planner:Aida] Plan created for goal: ${currentPlan.active_goal}. Next: ${step.action}`);
+            // log moved to createPlan() inside agent-planner.js
           }
         } catch (planErr) {
           console.error('[Planner:Aida] createPlan failed:', planErr.message);

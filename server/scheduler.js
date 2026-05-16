@@ -245,6 +245,7 @@ async function runMinutePulse(broadcast) {
           if (step) {
             task = {
               source: 'planner',
+              step_id: step.id,
               label: step.action,
               action: step.action,
               location: step.location,
@@ -272,6 +273,7 @@ async function runMinutePulse(broadcast) {
           if (step) {
             task = {
               source: 'planner',
+              step_id: step.id,
               label: step.action,
               action: step.action,
               location: step.location,
