@@ -185,7 +185,35 @@ function initDatabase() {
     fired_directive_ids: [],
     creator_messages: [],
     aida_messages: [],
-    weather_log: []
+    weather_log: [],
+    goals: {
+      arash: [
+        { id: 'protect_farm', title: 'Keep the farm alive', priority: 90, progress: 0 },
+        { id: 'repair_motorcycle', title: 'Repair the motorcycle', priority: 55, progress: 0 },
+        { id: 'improve_relationship_aida', title: 'Build trust with Aida', priority: 65, progress: 0 },
+        { id: 'increase_food_storage', title: 'Store enough food for hard days', priority: 80, progress: 0 }
+      ],
+      aida: [
+        { id: 'grow_herb_garden', title: 'Grow a strong herb garden', priority: 80, progress: 0 },
+        { id: 'care_for_animals', title: 'Care for animals', priority: 85, progress: 0 },
+        { id: 'understand_arash', title: 'Understand Arash better', priority: 60, progress: 0 },
+        { id: 'protect_homestead', title: 'Keep her homestead safe', priority: 75, progress: 0 }
+      ]
+    },
+    plans: {
+      arash: null,
+      aida: null
+    },
+    relationships: {
+      arash_aida: {
+        trust: 35,
+        affection: 20,
+        tension: 5,
+        last_interaction: null,
+        unresolved_issue: null,
+        shared_memories: []
+      }
+    }
   }).write();
 
   if (!db.get('aida_state').value()) db.set('aida_state', getDefaultAidaState()).write();
@@ -372,6 +400,30 @@ function logWeather(weather, worldTime) {
   if (logs.length > 200) db.set('weather_log', logs.slice(-200)).write();
 }
 
+function getGoals(character) {
+  return db.get(`goals.${character}`).value() || [];
+}
+
+function saveGoals(character, goals) {
+  db.set(`goals.${character}`, goals).write();
+}
+
+function getPlan(character) {
+  return db.get(`plans.${character}`).value() || null;
+}
+
+function savePlan(character, plan) {
+  db.set(`plans.${character}`, plan).write();
+}
+
+function getRelationship(id) {
+  return db.get(`relationships.${id}`).value() || null;
+}
+
+function saveRelationship(id, relationship) {
+  db.set(`relationships.${id}`, relationship).write();
+}
+
 module.exports = {
   initDatabase,
   getState, saveState,
@@ -383,5 +435,8 @@ module.exports = {
   getCreatorMessages, addCreatorMessage,
   getAidaMessages, addAidaMessage,
   logWeather,
+  getGoals, saveGoals,
+  getPlan, savePlan,
+  getRelationship, saveRelationship,
   WORLD_DAY_REAL_MINUTES
 };

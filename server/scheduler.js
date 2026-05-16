@@ -1,7 +1,8 @@
 // scheduler.js - minute pulse engine. Every 2 real seconds equals 1 Arash-world minute.
 const {
   getState, saveState, getMemories, addMemory, logWeather,
-  removeDirective, getDirectives, WORLD_DAY_REAL_MINUTES
+  removeDirective, getDirectives, WORLD_DAY_REAL_MINUTES,
+  getPlan, savePlan, getGoals, getRelationship
 } = require('./database');
 const { LOCATIONS } = require('./ai');
 const { updateAidaRoutine, buildAidaSocialDialogue } = require('./aida');
@@ -12,6 +13,8 @@ const {
   ensureDailyPlan, chooseGoalTask, completeGoalStep, recordSkillProgress,
   buildNightReflection, maybeCreateWorldEvent, defaultSkills
 } = require('./life-planner');
+const { createPlan, getNextPlanStep, markPlanStepDone, invalidatePlan } = require('./agent-planner');
+const { decideNextAction } = require('./life-brain');
 
 const WORLD_MINUTE_REAL_MS = 2000;
 const DEFAULT_TASK_DURATION_MINUTES = 30;
@@ -148,6 +151,16 @@ function completeActiveTask(state, worldState, weather, worldTime) {
   const result = applyActionConsequences(worldState, { action, target_location: location }, weather);
   let nextState = recordSkillProgress(state, action);
   nextState = completeGoalStep(nextState, action, location);
+  
+  let currentPlan = getPlan('arash');
+  if (currentPlan && currentPlan.status === 'active') {
+    const step = currentPlan.steps.find(s => s.action === action && s.status === 'pending');
+    if (step) {
+      currentPlan = markPlanStepDone('arash', currentPlan, step.id);
+      savePlan('arash', currentPlan);
+    }
+  }
+  
   const notes = result.outcome.notes.length ? ` (${result.outcome.notes.join(', ')})` : '';
   const thought = result.outcome.success ? `کار ${label} تمام شد و اثرش را در جهان گذاشت.` : `کار ${label} کامل انجام نشد؛ شرایط کافی نبود.`;
   addMemory(`آرش در ساعت ${worldTime} کار ${label} را تمام کرد.${notes}`, { type: 'life', importance: result.outcome.success ? 6 : 7 });
@@ -220,17 +233,86 @@ async function runMinutePulse(broadcast) {
     }
 
     if (nextState.current_action === 'idle') {
-      const criticalNeed = chooseNeedDrivenTask(nextState, worldState, weather, minute, true);
+      const emergencyNeed = chooseNeedDrivenTask(nextState, worldState, weather, minute, true);
       const creatorTask = dueCreatorTask(directives, day, worldTime);
-      const needTask = chooseNeedDrivenTask(nextState, worldState, weather, minute, false);
-      const goalTask = chooseGoalTask(nextState, minute);
-      const routineTask = dueRoutineTask(day, worldTime);
-      const task = criticalNeed || creatorTask || needTask || goalTask || routineTask;
+      let task = emergencyNeed || creatorTask;
+
+      if (!task) {
+        let currentPlan = getPlan('arash');
+        
+        if (currentPlan && currentPlan.status === 'active') {
+          const step = getNextPlanStep('arash', currentPlan);
+          if (step) {
+            task = {
+              source: 'planner',
+              label: step.action,
+              action: step.action,
+              location: step.location,
+              duration: 25,
+              reason: step.reason,
+              goal_id: currentPlan.active_goal,
+              goal_title: currentPlan.active_goal
+            };
+          }
+        }
+        
+        const lastPlannerCall = Number(nextState.last_planner_call_abs || 0);
+        const shouldCallPlanner = !currentPlan || currentPlan.status !== 'active' || (abs - lastPlannerCall >= 20);
+        
+        if (!task && shouldCallPlanner) {
+          const goals = getGoals('arash');
+          const memories = getMemories(5);
+          const relationships = getRelationship('arash_aida');
+          
+          currentPlan = await createPlan('arash', nextState, worldState, memories, relationships, goals, []);
+          savePlan('arash', currentPlan);
+          nextState.last_planner_call_abs = abs;
+          
+          const step = getNextPlanStep('arash', currentPlan);
+          if (step) {
+            task = {
+              source: 'planner',
+              label: step.action,
+              action: step.action,
+              location: step.location,
+              duration: 25,
+              reason: step.reason,
+              goal_id: currentPlan.active_goal,
+              goal_title: currentPlan.active_goal
+            };
+          }
+        }
+        
+        if (!task) {
+          const goals = getGoals('arash');
+          const memories = getMemories(5);
+          const relationships = getRelationship('arash_aida');
+          
+          const lifeDecision = await decideNextAction('arash', nextState, worldState, memories, relationships, [], goals);
+          task = {
+            source: 'life_brain',
+            label: lifeDecision.action,
+            action: lifeDecision.action,
+            location: lifeDecision.location,
+            duration: lifeDecision.duration,
+            reason: lifeDecision.reason,
+            goal_id: lifeDecision.goal,
+            thought_override: lifeDecision.thought
+          };
+        }
+        
+        if (!task) {
+          task = chooseNeedDrivenTask(nextState, worldState, weather, minute, false) || chooseGoalTask(nextState, minute) || dueRoutineTask(day, worldTime);
+        }
+      }
+
       if (task) {
-        if (task.source !== 'need' && task.source !== 'goal') firedKeys.add(taskKey(day, task));
+        if (task.source !== 'need' && task.source !== 'goal' && task.source !== 'planner' && task.source !== 'life_brain') {
+          firedKeys.add(taskKey(day, task));
+        }
         nextState = startTask(task, nextState, abs);
-        thought = taskThought(task);
-        addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.${task.reason ? ` دلیل: ${task.reason}.` : ''}${task.goal_title ? ` هدف: ${task.goal_title}.` : ''}${task.risk_id ? ` خطر: ${task.risk_id}.` : ''}`);
+        thought = task.thought_override || taskThought(task);
+        addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.${task.reason ? ` دلیل: ${task.reason}.` : ''}`);
         if (task.source === 'creator' && !task.recurring && task.id) removeDirective(task.id);
       }
     }
@@ -258,6 +340,7 @@ async function runMinutePulse(broadcast) {
         upcomingSchedule,
         ida_state: aidaState,
         social_dialogue: aidaState.social_dialogue,
+        active_plan: getPlan('arash'),
         apiKeyMissing: !hasAiKey
       }
     });

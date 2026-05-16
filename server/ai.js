@@ -130,17 +130,35 @@ async function callProvider(provider, model, messages, temperature = 0.35) {
   return data.choices?.[0]?.message?.content || '';
 }
 
-async function askAI(state, memories, weather, overrideTime, upcomingSchedule) {
+async function callAIModel(messages, temperature = 0.35) {
   if (isAIBusy) {
-    console.warn('[AI] Previous AI call still running. Using local fallback for this tick.');
-    return buildFallbackAction(state, weather, overrideTime);
+    console.warn('[AI] Previous AI call still running. Throwing to fallback.');
+    throw new Error('AI Busy');
   }
-
   isAIBusy = true;
   try {
-    return await callAI(state, memories, weather, overrideTime, upcomingSchedule);
+    for (const provider of PROVIDERS) {
+      for (const model of provider.models.filter(Boolean)) {
+        try {
+          const text = await callProvider(provider, model, messages, temperature);
+          return text;
+        } catch (err) {
+          const msg = err.message || String(err);
+          console.error(`[AI:${provider.name}] ${model} failed:`, msg.slice(0, 180));
+        }
+      }
+    }
+    throw new Error('All AI providers failed');
   } finally {
     isAIBusy = false;
+  }
+}
+
+async function askAI(state, memories, weather, overrideTime, upcomingSchedule) {
+  try {
+    return await callAI(state, memories, weather, overrideTime, upcomingSchedule);
+  } catch (err) {
+    return buildFallbackAction(state, weather, overrideTime);
   }
 }
 
@@ -290,4 +308,4 @@ function buildFallbackAction(state, weather, overrideTime) {
   };
 }
 
-module.exports = { askAI, LOCATIONS };
+module.exports = { askAI, callAIModel, LOCATIONS, extractJSON, VALID_ACTIONS };

@@ -95,7 +95,15 @@
 
         <section class="dashboard-section dashboard-section--focus character-panel character-panel--aida is-hidden" id="aida-intent-panel" data-character-panel="aida">
           <div class="dashboard-section-head intent-head"><span>Intent</span><div class="intent-tools"><strong id="aida-task-source-chip">steady</strong><button id="aida-intent-toggle" class="mini-toggle" title="Minimize intent">−</button></div></div>
-          <div class="intent-body" id="aida-intent-body"><div class="intent-row"><span class="intent-icon" id="aida-task-icon">🌿</span><div class="intent-copy"><strong id="aida-task-label">Settling in</strong><span id="aida-task-context">Aida is observing her homestead.</span></div></div><div class="insight-strip" id="aida-thought-bubble"><span id="aida-thought-text">Aida is reading the needs of her home.</span></div></div>
+          <div class="intent-body" id="aida-intent-body"><div class="intent-row"><span class="intent-icon" id="aida-task-icon">🌿</span><div class="intent-copy"><strong id="aida-task-label">Settling in</strong><span id="aida-task-context">Aida is observing her homestead.</span></div></div><div class="insight-strip" id="aida-thought-bubble"><span id="aida-thought-text">Aida is reading the needs of her home.</span></div>
+            <div class="agent-planner-strip" id="aida-planner-strip">
+              <div class="planner-row"><span class="planner-label">Decision</span><span id="aida-decision-source" class="planner-value">—</span></div>
+              <div class="planner-row"><span class="planner-label">Goal</span><span id="aida-active-goal" class="planner-value">—</span></div>
+              <div class="planner-row"><span class="planner-label">Step</span><span id="aida-plan-step" class="planner-value">—</span></div>
+              <div class="planner-row"><span class="planner-label">Reason</span><span id="aida-task-reason" class="planner-value">—</span></div>
+              <div class="planner-row"><span class="planner-label">Emotion</span><span id="aida-emotion" class="planner-value">—</span></div>
+            </div>
+          </div>
         </section>
 
         <section class="dashboard-section character-panel character-panel--aida is-hidden" data-character-panel="aida"><div class="dashboard-section-head"><span>Today</span><strong id="aida-risk-pill">stable</strong></div><div id="aida-daily-goals-list" class="dashboard-list muted-empty">Loading daily plan...</div></section>
@@ -105,7 +113,15 @@
 
         <section class="dashboard-section dashboard-section--focus character-panel character-panel--arash" id="intent-panel" data-character-panel="arash">
           <div class="dashboard-section-head intent-head"><span>Intent</span><div class="intent-tools"><strong id="task-source-chip">steady</strong><button id="intent-toggle" class="mini-toggle" title="Minimize intent">−</button></div></div>
-          <div class="intent-body" id="intent-body"><div class="intent-row"><span class="intent-icon" id="task-icon">💤</span><div class="intent-copy"><strong id="task-label">Resting</strong><span id="task-context">Waiting for the next meaningful action.</span></div></div><div class="insight-strip" id="thought-bubble"><span id="thought-text">Arash is observing the world.</span></div></div>
+          <div class="intent-body" id="intent-body"><div class="intent-row"><span class="intent-icon" id="task-icon">💤</span><div class="intent-copy"><strong id="task-label">Resting</strong><span id="task-context">Waiting for the next meaningful action.</span></div></div><div class="insight-strip" id="thought-bubble"><span id="thought-text">Arash is observing the world.</span></div>
+            <div class="agent-planner-strip" id="arash-planner-strip">
+              <div class="planner-row"><span class="planner-label">Decision</span><span id="arash-decision-source" class="planner-value">—</span></div>
+              <div class="planner-row"><span class="planner-label">Goal</span><span id="arash-active-goal" class="planner-value">—</span></div>
+              <div class="planner-row"><span class="planner-label">Step</span><span id="arash-plan-step" class="planner-value">—</span></div>
+              <div class="planner-row"><span class="planner-label">Reason</span><span id="arash-task-reason" class="planner-value">—</span></div>
+              <div class="planner-row"><span class="planner-label">Emotion</span><span id="arash-emotion" class="planner-value">—</span></div>
+            </div>
+          </div>
         </section>
 
         <section class="dashboard-section character-panel character-panel--arash" data-character-panel="arash"><div class="dashboard-section-head"><span>Today</span><strong id="risk-pill">stable</strong></div><div id="daily-goals-list" class="dashboard-list muted-empty">Loading daily plan...</div></section>
@@ -140,7 +156,7 @@
     <div class="creator-input-area"><textarea id="creator-input" placeholder="Speak with Arash..."></textarea><button id="creator-send">Send</button></div>
   </div>
 
-  <script type="module" src="main.js?v=21"></script>
+  <script type="module" src="main.js?v=22"></script>
   <script type="module" src="village-panel.js?v=6"></script>
   <script type="module" src="clock-smooth.js?v=2"></script>
 </body>

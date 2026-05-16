@@ -69,6 +69,18 @@ export class HUD {
     this.$aidaTaskSource = document.getElementById('aida-task-source-chip');
     this.$aidaThought = document.getElementById('aida-thought-bubble');
     this.$aidaThoughtText = document.getElementById('aida-thought-text');
+    // Arash planner strip
+    this.$arashDecisionSource = document.getElementById('arash-decision-source');
+    this.$arashActiveGoal     = document.getElementById('arash-active-goal');
+    this.$arashPlanStep       = document.getElementById('arash-plan-step');
+    this.$arashTaskReason     = document.getElementById('arash-task-reason');
+    this.$arashEmotion        = document.getElementById('arash-emotion');
+    // Aida planner strip
+    this.$aidaDecisionSource  = document.getElementById('aida-decision-source');
+    this.$aidaActiveGoalEl    = document.getElementById('aida-active-goal');
+    this.$aidaPlanStep        = document.getElementById('aida-plan-step');
+    this.$aidaTaskReasonEl    = document.getElementById('aida-task-reason');
+    this.$aidaEmotionEl       = document.getElementById('aida-emotion');
     this.$aidaGoals = document.getElementById('aida-daily-goals-list');
     this.$aidaRiskPill = document.getElementById('aida-risk-pill');
     this.$aidaRiskDetail = document.getElementById('aida-risk-detail');
@@ -173,6 +185,15 @@ export class HUD {
     if (this.$thoughtText) this.$thoughtText.textContent = data.thought || 'Arash is observing the world.';
     if (this.$thought) this.$thought.classList.toggle('is-live', Boolean(data.thought));
 
+    // Arash planner strip
+    const srcRaw = data.active_task_source || 'routine';
+    const srcLabel = { planner: '🧠 Planner', life_brain: '💡 Life Brain', creator: '✨ Creator', need: '⚠️ Need', routine: '📅 Routine', goal: '🎯 Goal' }[srcRaw] || srcRaw;
+    if (this.$arashDecisionSource) { this.$arashDecisionSource.textContent = srcLabel; this.$arashDecisionSource.className = `planner-value planner-value--source-${srcRaw}`; }
+    if (this.$arashActiveGoal)     this.$arashActiveGoal.textContent     = data.active_goal_title || data.active_goal_id || '—';
+    if (this.$arashPlanStep)       this.$arashPlanStep.textContent       = data.active_task_label || data.current_action || '—';
+    if (this.$arashTaskReason)     this.$arashTaskReason.textContent     = data.active_task_reason || '—';
+    if (this.$arashEmotion)        this.$arashEmotion.textContent        = data.mood || '—';
+
     this.updateAida(data.ida_state);
     this.updateRelationshipConsole(data, data.ida_state);
 
@@ -230,6 +251,15 @@ export class HUD {
     }
     if (this.$aidaThoughtText) this.$aidaThoughtText.textContent = aida.thought || 'Aida is reading the needs of her home.';
     if (this.$aidaThought) this.$aidaThought.classList.toggle('is-live', Boolean(aida.thought));
+
+    // Aida planner strip
+    const aidaSrcRaw = aida.active_task_source || 'routine';
+    const aidaSrcLabel = { planner: '🧠 Planner', life_brain: '💡 Life Brain', creator: '✨ Creator', need: '⚠️ Need', routine: '📅 Routine', goal: '🎯 Goal' }[aidaSrcRaw] || aidaSrcRaw;
+    if (this.$aidaDecisionSource) { this.$aidaDecisionSource.textContent = aidaSrcLabel; this.$aidaDecisionSource.className = `planner-value planner-value--source-${aidaSrcRaw}`; }
+    if (this.$aidaActiveGoalEl)   this.$aidaActiveGoalEl.textContent   = aida.active_goal_title || aida.active_goal_id || '—';
+    if (this.$aidaPlanStep)       this.$aidaPlanStep.textContent       = aida.active_task_label || aida.current_action || '—';
+    if (this.$aidaTaskReasonEl)   this.$aidaTaskReasonEl.textContent   = aida.active_task_reason || '—';
+    if (this.$aidaEmotionEl)      this.$aidaEmotionEl.textContent      = aida.mood || '—';
 
     const goals = aida.daily_plan?.goals || [];
     setHtml(this.$aidaGoals, goals.length ? goals.slice(0, 5).map(goalMarkup).join('') : '<div class="muted-empty">Daily goals will appear here.</div>');
