@@ -58,8 +58,26 @@ export class HUD {
     this.$taskSource = document.getElementById('task-source-chip');
     this.$thought = document.getElementById('thought-bubble');
     this.$thoughtText = document.getElementById('thought-text');
-    this.$aidaCard = document.getElementById('aida-life-card');
-    this.$aidaPill = document.getElementById('aida-status-pill');
+    this.$aidaMood = document.getElementById('aida-stat-mood');
+    this.$aidaEnergyBar = document.getElementById('aida-energy-bar');
+    this.$aidaEnergyVal = document.getElementById('aida-energy-val');
+    this.$aidaHungerBar = document.getElementById('aida-hunger-bar');
+    this.$aidaHungerVal = document.getElementById('aida-hunger-val');
+    this.$aidaTaskIcon = document.getElementById('aida-task-icon');
+    this.$aidaTaskLabel = document.getElementById('aida-task-label');
+    this.$aidaTaskContext = document.getElementById('aida-task-context');
+    this.$aidaTaskSource = document.getElementById('aida-task-source-chip');
+    this.$aidaThought = document.getElementById('aida-thought-bubble');
+    this.$aidaThoughtText = document.getElementById('aida-thought-text');
+    this.$aidaGoals = document.getElementById('aida-daily-goals-list');
+    this.$aidaRiskPill = document.getElementById('aida-risk-pill');
+    this.$aidaRiskDetail = document.getElementById('aida-risk-detail');
+    this.$aidaSkills = document.getElementById('aida-skills-list');
+    this.$aidaWorld = document.getElementById('aida-world-state-list');
+    this.$aidaMemories = document.getElementById('aida-memory-list');
+    this.$aidaEvents = document.getElementById('aida-events-list');
+    this.$aidaIntentPanel = document.getElementById('aida-intent-panel');
+    this.$aidaIntentToggle = document.getElementById('aida-intent-toggle');
     this.$relationshipDialogue = document.getElementById('arash-aida-dialogue');
     this.$relationshipPill = document.getElementById('arash-aida-pill');
     this.$tabArash = document.getElementById('dashboard-tab-arash');
@@ -96,12 +114,20 @@ export class HUD {
   }
 
   initIntentToggle() {
-    if (!this.$intentPanel || !this.$intentToggle) return;
-    this.$intentToggle.addEventListener('click', () => {
-      const collapsed = this.$intentPanel.classList.toggle('is-collapsed');
-      this.$intentToggle.textContent = collapsed ? '+' : '−';
-      this.$intentToggle.title = collapsed ? 'Expand intent' : 'Minimize intent';
-    });
+    if (this.$intentPanel && this.$intentToggle) {
+      this.$intentToggle.addEventListener('click', () => {
+        const collapsed = this.$intentPanel.classList.toggle('is-collapsed');
+        this.$intentToggle.textContent = collapsed ? '+' : '−';
+        this.$intentToggle.title = collapsed ? 'Expand intent' : 'Minimize intent';
+      });
+    }
+    if (this.$aidaIntentPanel && this.$aidaIntentToggle) {
+      this.$aidaIntentToggle.addEventListener('click', () => {
+        const collapsed = this.$aidaIntentPanel.classList.toggle('is-collapsed');
+        this.$aidaIntentToggle.textContent = collapsed ? '+' : '−';
+        this.$aidaIntentToggle.title = collapsed ? 'Expand intent' : 'Minimize intent';
+      });
+    }
   }
 
   initCharacterTabs() {
@@ -182,48 +208,56 @@ export class HUD {
   }
 
   updateAida(aida = {}) {
-    if (!this.$aidaCard) return;
-    if (!aida || !aida.name) {
-      this.$aidaCard.textContent = 'Waiting for Aida...';
-      if (this.$aidaPill) this.$aidaPill.textContent = 'offline';
-      return;
-    }
+    if (!aida || !aida.name) return;
 
-    const action = aida.active_task_label || ACTION_LABELS[aida.current_action] || aida.current_action || 'Settling in';
-    const mood = aida.mood || 'curious';
-    const relation = pct(aida.relationship_arash ?? 0);
     const energy = pct(aida.energy ?? 0);
     const hunger = pct(aida.hunger ?? 0);
-    const icon = ACTION_ICONS[aida.current_action] || '🌿';
-    const position = `${Number(aida.position_x ?? 0).toFixed(1)}, ${Number(aida.position_z ?? 0).toFixed(1)}`;
-    const world = aida.aida_world || {};
-    const risk = aida.risk_state || {};
-    const goals = aida.daily_plan?.goals || [];
-    const skills = aida.skills || {};
-    const memories = aida.short_memory || [];
-    const events = aida.world_events || [];
+    if (this.$aidaEnergyBar) { this.$aidaEnergyBar.style.width = `${energy}%`; this.$aidaEnergyBar.style.background = energy > 40 ? '#31d27c' : energy > 20 ? '#f1c84b' : '#ef6a6a'; }
+    if (this.$aidaEnergyVal) this.$aidaEnergyVal.textContent = `${energy}%`;
+    if (this.$aidaHungerBar) { this.$aidaHungerBar.style.width = `${hunger}%`; this.$aidaHungerBar.style.background = hunger < 50 ? '#31d27c' : hunger < 75 ? '#f1c84b' : '#ef6a6a'; }
+    if (this.$aidaHungerVal) this.$aidaHungerVal.textContent = `${hunger}%`;
+    if (this.$aidaMood && aida.mood) this.$aidaMood.textContent = `${MOOD_ICONS[aida.mood] || '😊'} ${aida.mood}`;
 
-    if (this.$aidaPill) this.$aidaPill.textContent = mood;
-    this.$aidaCard.innerHTML = `
-      <div class="villager-life-head">
-        <span class="villager-avatar">${icon}</span>
-        <div><strong>${esc(aida.name || 'Aida')}</strong><span>${esc(aida.role || 'villager')}</span></div>
-      </div>
-      <div class="villager-life-action"><strong>${esc(action)}</strong><span>${esc(aida.home_label || 'Aida homestead')} · ${esc(position)}</span></div>
-      <div class="villager-life-grid">
-        ${createMeter('Energy', energy, energy < 30 ? 'warn' : 'primary')}
-        ${createMeter('Hunger', hunger, hunger > 70 ? 'warn' : 'primary')}
-        ${createMeter('Arash Bond', relation, relation > 55 ? 'ready' : 'primary')}
-      </div>
-      <div class="aida-life-block"><div class="dashboard-section-head"><span>Needs & Risk</span><strong>${esc(risk.mode || 'stable')}</strong></div>${riskMarkup(risk)}</div>
-      <div class="aida-life-block"><div class="dashboard-section-head"><span>Aida World</span></div><div class="world-ledger-grid">
-        ${createMetric('Food', world.supplies?.food ?? 0)}${createMetric('Herbs', world.supplies?.herbs ?? 0)}${createMetric('Thread', world.supplies?.thread ?? 0)}
-        ${createMetric('Herb Stock', world.herbs?.stock ?? 0)}
-      </div>${createMeter('Garden Moisture', world.garden?.moisture, (world.garden?.moisture ?? 100) < 30 ? 'warn' : 'primary')}${createMeter('Garden Growth', world.garden?.growth, (world.garden?.growth ?? 0) > 75 ? 'ready' : 'primary')}${createMeter('Garden Health', world.garden?.health, (world.garden?.health ?? 100) < 45 ? 'warn' : 'primary')}${createMeter('Animal Hunger', world.animals?.hunger, (world.animals?.hunger ?? 0) > 70 ? 'warn' : 'primary')}${createMeter('Animal Trust', world.animals?.trust, 'ready')}${createMeter('Home Cleanliness', world.home?.cleanliness, (world.home?.cleanliness ?? 100) < 35 ? 'warn' : 'primary')}</div>
-      <div class="aida-life-block"><div class="dashboard-section-head"><span>Goals</span></div>${goals.length ? goals.slice(0, 5).map(goalMarkup).join('') : '<div class="muted-empty">No Aida goals yet.</div>'}</div>
-      <div class="aida-life-block"><div class="dashboard-section-head"><span>Skills</span></div>${[skillMarkup('Gardening', skills.gardening), skillMarkup('Herbs', skills.herbs), skillMarkup('Animals', skills.animals), skillMarkup('Cooking', skills.cooking), skillMarkup('Social', skills.social), skillMarkup('Resilience', skills.resilience)].join('')}</div>
-      <div class="aida-life-block"><div class="dashboard-section-head"><span>Short Memory</span></div>${memories.length ? `<ul class="dashboard-feed">${memories.slice(0, 5).map(m => `<li>${esc(m.text || m.content || m)}</li>`).join('')}</ul>` : '<div class="muted-empty">No short memory yet.</div>'}</div>
-      <div class="aida-life-block"><div class="dashboard-section-head"><span>World Events</span></div>${events.length ? events.slice(0, 4).map(eventMarkup).join('') : '<div class="muted-empty">No Aida event yet.</div>'}</div>`;
+    const action = aida.current_action || 'idle';
+    const icon = ACTION_ICONS[action] || '🌿';
+    const label = aida.active_task_label || ACTION_LABELS[action] || action || 'Settling in';
+    if (this.$aidaTaskIcon) this.$aidaTaskIcon.textContent = icon;
+    if (this.$aidaTaskLabel) this.$aidaTaskLabel.textContent = label;
+    if (this.$aidaTaskSource) this.$aidaTaskSource.textContent = aida.active_task_source || 'steady';
+    if (this.$aidaTaskContext) {
+      const parts = [aida.active_goal_title, aida.active_task_reason, aida.active_risk_id ? `risk: ${aida.active_risk_id}` : null].filter(Boolean);
+      this.$aidaTaskContext.textContent = parts.join(' | ') || 'Aida is observing her homestead.';
+    }
+    if (this.$aidaThoughtText) this.$aidaThoughtText.textContent = aida.thought || 'Aida is reading the needs of her home.';
+    if (this.$aidaThought) this.$aidaThought.classList.toggle('is-live', Boolean(aida.thought));
+
+    const goals = aida.daily_plan?.goals || [];
+    setHtml(this.$aidaGoals, goals.length ? goals.slice(0, 5).map(goalMarkup).join('') : '<div class="muted-empty">Daily goals will appear here.</div>');
+    const risk = aida.risk_state || {};
+    if (this.$aidaRiskPill) this.$aidaRiskPill.textContent = risk.mode || 'stable';
+    setHtml(this.$aidaRiskDetail, riskMarkup(risk));
+    
+    const skills = aida.skills || {};
+    setHtml(this.$aidaSkills, [skillMarkup('Gardening', skills.gardening), skillMarkup('Herbs', skills.herbs), skillMarkup('Animals', skills.animals), skillMarkup('Cooking', skills.cooking), skillMarkup('Social', skills.social), skillMarkup('Resilience', skills.resilience)].join(''));
+    
+    const world = aida.aida_world || {};
+    if (this.$aidaWorld) {
+      this.$aidaWorld.innerHTML = `<div class="world-ledger-grid">${createMetric('Food', world.supplies?.food ?? 0)}${createMetric('Herbs', world.supplies?.herbs ?? 0)}${createMetric('Thread', world.supplies?.thread ?? 0)}${createMetric('Herb Stock', world.herbs?.stock ?? 0)}${createMetric('Home Clean', \`\${pct(world.home?.cleanliness)}%\`, pct(world.home?.cleanliness) <= 35 ? 'warn' : 'primary')}</div><div class="field-ledger"><article><strong>Garden</strong>${createMeter('Moisture', world.garden?.moisture, (world.garden?.moisture ?? 100) < 30 ? 'warn' : 'primary')}${createMeter('Growth', world.garden?.growth, (world.garden?.growth ?? 0) > 75 ? 'ready' : 'primary')}${createMeter('Health', world.garden?.health, (world.garden?.health ?? 100) < 45 ? 'warn' : 'primary')}</article><article><strong>Animals</strong>${createMeter('Hunger', world.animals?.hunger, (world.animals?.hunger ?? 0) > 70 ? 'warn' : 'primary')}${createMeter('Trust', world.animals?.trust, 'ready')}</article></div>`;
+    }
+
+    if (this.$aidaMemories) {
+      this.$aidaMemories.innerHTML = '';
+      const memories = aida.short_memory || [];
+      memories.slice(0, 5).forEach(m => {
+        const li = document.createElement('li');
+        li.textContent = m.text || m.content || m;
+        this.$aidaMemories.appendChild(li);
+      });
+      if (!this.$aidaMemories.children.length) this.$aidaMemories.innerHTML = '<li class="muted-empty">No short memory yet.</li>';
+    }
+
+    const events = aida.world_events || [];
+    setHtml(this.$aidaEvents, events.length ? events.slice(0, 4).map(eventMarkup).join('') : '<div class="muted-empty">No notable event yet.</div>');
   }
 
   updateWorld(world) {
