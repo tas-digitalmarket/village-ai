@@ -27,9 +27,7 @@ export class CreatorPanel {
         e.preventDefault();
         this._sendMessage();
       };
-      this.$send.addEventListener('mousedown', handleSend);
       this.$send.addEventListener('click', handleSend);
-      this.$send.addEventListener('touchstart', handleSend);
     }
     if (this.$input) {
       this.$input.addEventListener('keydown', (e) => {

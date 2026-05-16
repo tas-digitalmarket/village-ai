@@ -313,6 +313,8 @@ function connectWS() {
     wsConnected = true;
     wsReconnectDelay = 2000;
     hud.setConnected(true);
+    const lsMsg = document.getElementById('loading-msg');
+    if (lsMsg) lsMsg.textContent = 'Connection Established. Synchronizing World...';
     fetchDirectivesFallback();
   };
 
