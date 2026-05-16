@@ -111,7 +111,7 @@ export class CharacterSpeechBubbles {
         overflow-wrap: anywhere;
       }
       .overhead-bubble--arash { background: #8fc7ff; border: 1px solid rgba(255,255,255,.75); }
-      .overhead-bubble--aida { background: #ffb3cf; border: 1px solid rgba(255,255,255,.75); }
+      .overhead-bubble--aida { background: #8fc7ff; border: 1px solid rgba(255,255,255,.75); }
       @media (max-width: 720px) { .overhead-bubble { width: min(190px, 48vw); font-size: 11px; } }
     `;
     document.head.appendChild(style);
