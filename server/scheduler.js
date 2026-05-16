@@ -138,8 +138,51 @@ function buildUpcomingSchedule(directives, worldTime) {
   return schedule.filter(s => parseMinutes(s.time) >= currentMinutes).slice(0, 10);
 }
 
-function startTask(item, state, absMinute) { const location = item.location || 'path_center'; const pos = LOCATIONS[location] || LOCATIONS.path_center || { x: 0, z: 0 }; const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES)); return { ...state, current_action: item.action || 'idle', active_task_label: item.label || item.action || 'Task', active_task_source: item.source || 'routine', active_task_reason: item.reason || null, active_task_location: location, active_goal_id: item.goal_id || null, active_goal_title: item.goal_title || null, active_risk_id: item.risk_id || null, active_risk_severity: item.risk_severity || null, task_started_at_abs: absMinute, task_ends_at_abs: absMinute + duration, position_x: pos.x, position_y: 0, position_z: pos.z, energy: roundNeed(clamp((state.energy || 80) + actionEnergyDelta(item.action), 0, 100)), hunger: roundNeed(clamp((state.hunger || 20) + actionHungerDelta(item.action), 0, 100)), mood: item.action === 'sleeping' ? 'tired' : item.action === 'eating' ? 'content' : 'focused' }; }
-function idleState(state) { return { ...state, current_action: 'idle', active_task_label: null, active_task_source: null, active_task_reason: null, active_task_location: null, active_goal_id: null, active_goal_title: null, active_risk_id: null, active_risk_severity: null, task_started_at_abs: null, task_ends_at_abs: null, mood: state.mood || 'content' }; }
+function startTask(item, state, absMinute) {
+  const location = item.location || 'path_center';
+  const pos = LOCATIONS[location] || LOCATIONS.path_center || { x: 0, z: 0 };
+  const duration = Math.max(1, Number(item.duration || DEFAULT_TASK_DURATION_MINUTES));
+  return {
+    ...state,
+    current_action: item.action || 'idle',
+    active_task_label: item.label || item.action || 'Task',
+    active_task_source: item.source || 'routine',
+    active_task_reason: item.reason || null,
+    active_task_location: location,
+    active_goal_id: item.goal_id || null,
+    active_goal_title: item.goal_title || null,
+    active_risk_id: item.risk_id || null,
+    active_risk_severity: item.risk_severity || null,
+    // Store step_id so completeActiveTask can mark the exact step done
+    active_plan_step_id: item.source === 'planner' ? (item.step_id || null) : null,
+    task_started_at_abs: absMinute,
+    task_ends_at_abs: absMinute + duration,
+    position_x: pos.x,
+    position_y: 0,
+    position_z: pos.z,
+    energy: roundNeed(clamp((state.energy || 80) + actionEnergyDelta(item.action), 0, 100)),
+    hunger: roundNeed(clamp((state.hunger || 20) + actionHungerDelta(item.action), 0, 100)),
+    mood: item.action === 'sleeping' ? 'tired' : item.action === 'eating' ? 'content' : 'focused'
+  };
+}
+function idleState(state) {
+  return {
+    ...state,
+    current_action: 'idle',
+    active_task_label: null,
+    active_task_source: null,
+    active_task_reason: null,
+    active_task_location: null,
+    active_goal_id: null,
+    active_goal_title: null,
+    active_risk_id: null,
+    active_risk_severity: null,
+    active_plan_step_id: null,
+    task_started_at_abs: null,
+    task_ends_at_abs: null,
+    mood: state.mood || 'content'
+  };
+}
 function startNightSleep(state, absMinute, currentMinute) { return startTask({ label: 'Sleep', action: 'sleeping', location: 'bed', duration: nextWakeAbs(absMinute, currentMinute) - absMinute, source: 'routine', reason: 'night sleep' }, state, absMinute); }
 function maybeUpdateWorldDrift(state, worldState, weather, absMinute) { const last = Number(state.last_world_drift_abs || 0); if (last && absMinute - last < WORLD_DRIFT_MINUTES) return { worldState, lastWorldDriftAbs: last }; return { worldState: applyWorldDrift(worldState, weather), lastWorldDriftAbs: absMinute }; }
 
@@ -151,18 +194,49 @@ function completeActiveTask(state, worldState, weather, worldTime) {
   const result = applyActionConsequences(worldState, { action, target_location: location }, weather);
   let nextState = recordSkillProgress(state, action);
   nextState = completeGoalStep(nextState, action, location);
-  
+
+  // Mark the exact plan step done for Arash
   let currentPlan = getPlan('arash');
   if (currentPlan && currentPlan.status === 'active') {
-    const step = currentPlan.steps.find(s => s.action === action && s.status === 'pending');
-    if (step) {
-      currentPlan = markPlanStepDone('arash', currentPlan, step.id);
+    const stepId = state.active_plan_step_id;
+    let matchedStep = null;
+
+    if (stepId) {
+      // Preferred: match by stored step_id (exact and reliable)
+      matchedStep = currentPlan.steps.find(s => s.id === stepId && s.status === 'pending');
+      if (matchedStep) {
+        console.log(`[Planner:Arash] completed step by ID: ${stepId}`);
+      }
+    }
+
+    if (!matchedStep) {
+      // Fallback: match by action + location
+      matchedStep = currentPlan.steps.find(
+        s => s.action === action && s.location === location && s.status === 'pending'
+      );
+      if (matchedStep) {
+        console.log(`[Planner:Arash] completed step by action+location: ${action}@${location}`);
+      }
+    }
+
+    if (!matchedStep) {
+      // Last resort: match by action only
+      matchedStep = currentPlan.steps.find(s => s.action === action && s.status === 'pending');
+      if (matchedStep) {
+        console.log(`[Planner:Arash] completed step by action only (fallback): ${action}`);
+      }
+    }
+
+    if (matchedStep) {
+      currentPlan = markPlanStepDone('arash', currentPlan, matchedStep.id);
       savePlan('arash', currentPlan);
     }
   }
-  
+
   const notes = result.outcome.notes.length ? ` (${result.outcome.notes.join(', ')})` : '';
-  const thought = result.outcome.success ? `کار ${label} تمام شد و اثرش را در جهان گذاشت.` : `کار ${label} کامل انجام نشد؛ شرایط کافی نبود.`;
+  const thought = result.outcome.success
+    ? `کار ${label} تمام شد و اثرش را در جهان گذاشت.`
+    : `کار ${label} کامل انجام نشد؛ شرایط کافی نبود.`;
   addMemory(`آرش در ساعت ${worldTime} کار ${label} را تمام کرد.${notes}`, { type: 'life', importance: result.outcome.success ? 6 : 7 });
   return { state: idleState(nextState), worldState: result.worldState, thought };
 }

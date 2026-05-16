@@ -116,6 +116,8 @@ function startAidaTask(state, task, absMinute, worldTime) {
     active_goal_id: task.goal_id || null,
     active_goal_title: task.goal_title || null,
     active_risk_id: task.risk_id || null,
+    // Store step_id so completeAidaTask can mark the exact step done
+    active_plan_step_id: task.source === 'planner' ? (task.step_id || null) : null,
     task_started_at_abs: absMinute,
     task_ends_at_abs: absMinute + Math.max(1, Number(task.duration || 30)),
     mood: task.mood || state.mood || 'focused',
@@ -128,21 +130,44 @@ function startAidaTask(state, task, absMinute, worldTime) {
 
 function completeAidaTask(state, weather, worldTime) {
   const action = state.current_action;
+  const location = state.active_task_location || 'home';
   if (!action || action === 'idle') return { state, thought: null };
-  const result = applyAidaActionConsequences(state, action, state.active_task_location, weather, worldTime);
+  const result = applyAidaActionConsequences(state, action, location, weather, worldTime);
   const label = state.active_task_label || action;
   const notes = result.outcome.notes.length ? ` (${result.outcome.notes.join(', ')})` : '';
   const thought = result.outcome.success
     ? `کار ${label} را تمام کردم و اثرش را در خانه و باغچه‌ام می‌بینم.`
     : `کار ${label} کامل پیش نرفت؛ باید بعدا دوباره به آن برگردم.`;
 
-  // Mark the matching step done in Aida's active plan
+  // Mark the exact plan step done in Aida's active plan
   try {
     let currentPlan = getPlan('aida');
     if (currentPlan && currentPlan.status === 'active') {
-      const step = currentPlan.steps.find(s => s.action === action && s.status === 'pending');
-      if (step) {
-        currentPlan = markPlanStepDone('aida', currentPlan, step.id);
+      const stepId = state.active_plan_step_id;
+      let matchedStep = null;
+
+      if (stepId) {
+        // Preferred: match by stored step_id
+        matchedStep = currentPlan.steps.find(s => s.id === stepId && s.status === 'pending');
+        if (matchedStep) console.log(`[Planner:Aida] completed step by ID: ${stepId}`);
+      }
+
+      if (!matchedStep) {
+        // Fallback: action + location
+        matchedStep = currentPlan.steps.find(
+          s => s.action === action && s.location === location && s.status === 'pending'
+        );
+        if (matchedStep) console.log(`[Planner:Aida] completed step by action+location: ${action}@${location}`);
+      }
+
+      if (!matchedStep) {
+        // Last resort: action only
+        matchedStep = currentPlan.steps.find(s => s.action === action && s.status === 'pending');
+        if (matchedStep) console.log(`[Planner:Aida] completed step by action only (fallback): ${action}`);
+      }
+
+      if (matchedStep) {
+        currentPlan = markPlanStepDone('aida', currentPlan, matchedStep.id);
         savePlan('aida', currentPlan);
       }
     }
@@ -162,6 +187,7 @@ function completeAidaTask(state, weather, worldTime) {
       active_goal_id: null,
       active_goal_title: null,
       active_risk_id: null,
+      active_plan_step_id: null,
       task_started_at_abs: null,
       task_ends_at_abs: null
     }, `Aida finished ${label}.`, worldTime),
