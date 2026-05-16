@@ -153,7 +153,6 @@ function startTask(item, state, absMinute) {
     active_goal_title: item.goal_title || null,
     active_risk_id: item.risk_id || null,
     active_risk_severity: item.risk_severity || null,
-    // Store step_id so completeActiveTask can mark the exact step done
     active_plan_step_id: item.source === 'planner' ? (item.step_id || null) : null,
     task_started_at_abs: absMinute,
     task_ends_at_abs: absMinute + duration,

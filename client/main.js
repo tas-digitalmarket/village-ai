@@ -329,7 +329,9 @@ function connectWS() {
     wsReconnectDelay = 2000;
     hud.setConnected(true);
     const lsMsg = document.getElementById('loading-msg');
-    if (lsMsg) lsMsg.textContent = 'Connection Established. Synchronizing World...';
+    const lsH2 = document.querySelector('#loading-screen h2');
+    if (lsMsg) lsMsg.textContent = 'Neural Link Established. Synchronizing World...';
+    if (lsH2) lsH2.textContent = 'Connection Established';
     fetchDirectivesFallback();
   };
 

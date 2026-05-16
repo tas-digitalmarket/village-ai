@@ -90,6 +90,7 @@ export class HUD {
     this.$aidaEvents = document.getElementById('aida-events-list');
     this.$aidaIntentPanel = document.getElementById('aida-intent-panel');
     this.$aidaIntentToggle = document.getElementById('aida-intent-toggle');
+    this.$relationshipBond = document.getElementById('arash-aida-bond-container');
     this.$relationshipDialogue = document.getElementById('arash-aida-dialogue');
     this.$relationshipPill = document.getElementById('arash-aida-pill');
     this.$tabArash = document.getElementById('dashboard-tab-arash');
@@ -216,15 +217,12 @@ export class HUD {
   }
 
   updateRelationshipConsole(arash = {}, aida = {}) {
-    if (!this.$relationshipDialogue) return;
+    if (!this.$relationshipBond) return;
     const bond = pct(aida?.relationship_arash ?? 0);
-    const arashAction = arash.active_task_label || ACTION_LABELS[arash.current_action] || arash.current_action || 'observing the farm';
-    const aidaAction = aida?.active_task_label || ACTION_LABELS[aida?.current_action] || aida?.current_action || 'settling into village life';
     const tone = bond >= 65 ? 'close' : bond >= 40 ? 'familiar' : 'distant';
     if (this.$relationshipPill) this.$relationshipPill.textContent = tone;
-    this.$relationshipDialogue.innerHTML = `
-      <div class="dialogue-line"><strong>Arash</strong><span>${esc(arashAction)}</span></div>
-      <div class="dialogue-line"><strong>Aida</strong><span>${esc(aidaAction)}</span></div>
+    
+    this.$relationshipBond.innerHTML = `
       <div class="relationship-meter">${createMeter('Bond', bond, bond >= 55 ? 'ready' : 'primary')}</div>`;
   }
 
@@ -310,5 +308,5 @@ export class HUD {
     });
   }
 
-  setConnected(connected) { if (this.$conn) { this.$conn.textContent = connected ? '● Live' : '● Reconnecting'; this.$conn.className = `dashboard-chip ${connected ? 'dashboard-chip--live' : 'dashboard-chip--warn'}`; } }
+  setConnected(connected) { if (this.$conn) { this.$conn.textContent = connected ? '● Connected' : '● Reconnecting...'; this.$conn.className = `dashboard-chip ${connected ? 'dashboard-chip--live' : 'dashboard-chip--warn'}`; } }
 }
