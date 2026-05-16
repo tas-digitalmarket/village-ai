@@ -25,13 +25,7 @@ function normalizeLines(lines = [], state = {}) {
     .filter(line => line && line.text)
     .map(line => ({ speaker: speakerKey(line.speaker), text: String(line.text), world_time: line.world_time || state.world_time || '' }));
 
-  if (clean.length) return clean.slice(-6);
-
-  const aidaState = state.ida_state || {};
-  return [
-    { speaker: 'arash', text: state.thought || state.active_task_label || 'I am keeping an eye on the farm.', world_time: state.world_time || '' },
-    { speaker: 'aida', text: aidaState.thought || aidaState.active_task_label || 'I am settling into my homestead.', world_time: state.world_time || '' }
-  ];
+  return clean.slice(-6);
 }
 
 function messageKey(messages) {

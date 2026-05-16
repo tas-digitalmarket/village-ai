@@ -145,18 +145,7 @@ function speakerLabel(speaker) {
 
 function normalizeDialogueLines(lines, state = {}) {
   if (Array.isArray(lines) && lines.length) return lines.filter(line => line && line.text);
-
-  const aidaState = state.ida_state || {};
-  return [
-    {
-      speaker: 'arash',
-      text: state.thought || state.current_action || 'I am keeping an eye on the farm.'
-    },
-    {
-      speaker: 'aida',
-      text: aidaState.thought || aidaState.active_task_context || aidaState.active_task_label || 'I am settling into my homestead.'
-    }
-  ];
+  return [];
 }
 
 function updateSocialDialogue(lines, state = {}) {
