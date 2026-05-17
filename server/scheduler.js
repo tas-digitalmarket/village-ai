@@ -15,6 +15,13 @@ const {
 } = require('./life-planner');
 const { createPlan, getNextPlanStep, markPlanStepDone, invalidatePlan } = require('./agent-planner');
 const { decideNextAction } = require('./life-brain');
+const {
+  canCallPlanner,
+  canCallLifeBrain,
+  markCompletedTempo,
+  makeSettleTask,
+  rememberLifeBrainCall
+} = require('./decision-tempo');
 
 const WORLD_MINUTE_REAL_MS = 2000;
 const DEFAULT_TASK_DURATION_MINUTES = 30;
@@ -185,7 +192,7 @@ function idleState(state) {
 function startNightSleep(state, absMinute, currentMinute) { return startTask({ label: 'Sleep', action: 'sleeping', location: 'bed', duration: nextWakeAbs(absMinute, currentMinute) - absMinute, source: 'routine', reason: 'night sleep' }, state, absMinute); }
 function maybeUpdateWorldDrift(state, worldState, weather, absMinute) { const last = Number(state.last_world_drift_abs || 0); if (last && absMinute - last < WORLD_DRIFT_MINUTES) return { worldState, lastWorldDriftAbs: last }; return { worldState: applyWorldDrift(worldState, weather), lastWorldDriftAbs: absMinute }; }
 
-function completeActiveTask(state, worldState, weather, worldTime) {
+function completeActiveTask(state, worldState, weather, worldTime, absMinute) {
   const action = state.current_action;
   const label = state.active_task_label || action;
   const location = state.active_task_location || 'path_center';
@@ -237,7 +244,11 @@ function completeActiveTask(state, worldState, weather, worldTime) {
     ? `کار ${label} تمام شد و اثرش را در جهان گذاشت.`
     : `کار ${label} کامل انجام نشد؛ شرایط کافی نبود.`;
   addMemory(`آرش در ساعت ${worldTime} کار ${label} را تمام کرد.${notes}`, { type: 'life', importance: result.outcome.success ? 6 : 7 });
-  return { state: idleState(nextState), worldState: result.worldState, thought };
+  return {
+    state: markCompletedTempo(idleState(nextState), absMinute, label, state.active_task_source),
+    worldState: result.worldState,
+    thought
+  };
 }
 
 function taskThought(task) {
@@ -272,7 +283,7 @@ async function runMinutePulse(broadcast) {
       thought = 'کار قبلی ام تمام شده؛ تا برنامه بعدی آرام می مانم.';
     }
     if (nextState.current_action !== 'idle' && nextState.task_ends_at_abs && abs >= Number(nextState.task_ends_at_abs)) {
-      const completed = completeActiveTask(nextState, worldState, weather, worldTime);
+      const completed = completeActiveTask(nextState, worldState, weather, worldTime, abs);
       nextState = completed.state;
       worldState = completed.worldState;
       thought = completed.thought;
@@ -308,7 +319,10 @@ async function runMinutePulse(broadcast) {
     if (nextState.current_action === 'idle') {
       const emergencyNeed = chooseNeedDrivenTask(nextState, worldState, weather, minute, true);
       const creatorTask = dueCreatorTask(directives, day, worldTime);
-      let task = emergencyNeed || creatorTask;
+      const routineTask = dueRoutineTask(day, worldTime);
+      const everydayNeed = emergencyNeed ? null : chooseNeedDrivenTask(nextState, worldState, weather, minute, false);
+      const goalTask = chooseGoalTask(nextState, minute);
+      let task = emergencyNeed || creatorTask || routineTask || everydayNeed || makeSettleTask('arash', nextState, abs, worldTime);
 
       if (!task) {
         let currentPlan = getPlan('arash');
@@ -331,7 +345,8 @@ async function runMinutePulse(broadcast) {
         }
         
         const lastPlannerCall = Number(nextState.last_planner_call_abs || 0);
-        const shouldCallPlanner = !currentPlan || currentPlan.status !== 'active' || (abs - lastPlannerCall >= 20);
+        const shouldCallPlanner = (!currentPlan || currentPlan.status !== 'active' || (abs - lastPlannerCall >= 20))
+          && canCallPlanner(nextState, abs, worldTime);
         
         if (!task && shouldCallPlanner) {
           const goals = getGoals('arash');
@@ -358,12 +373,13 @@ async function runMinutePulse(broadcast) {
           }
         }
         
-        if (!task) {
+        if (!task && canCallLifeBrain(nextState, abs, worldTime)) {
           const goals = getGoals('arash');
           const memories = getMemories(5);
           const relationships = getRelationship('arash_aida');
           
           const lifeDecision = await decideNextAction('arash', nextState, worldState, memories, relationships, [], goals);
+          nextState = rememberLifeBrainCall(nextState, 'arash', abs);
           task = {
             source: 'life_brain',
             label: lifeDecision.action,
@@ -377,7 +393,7 @@ async function runMinutePulse(broadcast) {
         }
         
         if (!task) {
-          task = chooseNeedDrivenTask(nextState, worldState, weather, minute, false) || chooseGoalTask(nextState, minute) || dueRoutineTask(day, worldTime);
+          task = goalTask || makeSettleTask('arash', nextState, abs, worldTime);
         }
       }
 

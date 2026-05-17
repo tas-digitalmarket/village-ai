@@ -21,6 +21,13 @@ const {
 const { createPlan, getNextPlanStep, markPlanStepDone, invalidatePlan } = require('./agent-planner');
 const { decideNextAction } = require('./life-brain');
 const {
+  canCallPlanner,
+  canCallLifeBrain,
+  markCompletedTempo,
+  makeSettleTask,
+  rememberLifeBrainCall
+} = require('./decision-tempo');
+const {
   parseMinutes,
   absoluteMinute,
   ensureAidaMind,
@@ -128,7 +135,7 @@ function startAidaTask(state, task, absMinute, worldTime) {
   }, `Aida started ${task.label || task.action}.`, worldTime);
 }
 
-function completeAidaTask(state, weather, worldTime) {
+function completeAidaTask(state, weather, worldTime, absMinute) {
   const action = state.current_action;
   const location = state.active_task_location || 'home';
   if (!action || action === 'idle') return { state, thought: null };
@@ -177,7 +184,7 @@ function completeAidaTask(state, weather, worldTime) {
 
   addAidaMemory(`Aida completed ${label} at ${worldTime}.${notes}`, { type: action === 'shared_path_garden' ? 'social' : 'life', importance: result.outcome.success ? 6 : 7 });
   return {
-    state: addShortMemory({
+    state: markCompletedTempo(addShortMemory({
       ...result.state,
       current_action: 'idle',
       active_task_label: null,
@@ -190,14 +197,14 @@ function completeAidaTask(state, weather, worldTime) {
       active_plan_step_id: null,
       task_started_at_abs: null,
       task_ends_at_abs: null
-    }, `Aida finished ${label}.`, worldTime),
+    }, `Aida finished ${label}.`, worldTime), absMinute, label, state.active_task_source),
     thought
   };
 }
 
 function chooseAidaTask(state, risk, minute) {
   const critical = risk.risks?.find(item => item.task && item.severity >= 88);
-  if (critical) return { ...critical.task, risk_id: critical.id, source: 'risk' };
+  if (critical) reurn { ...critical.task, risk_id: critical.id, source: 'risk' };
   const urgent = risk.risks?.find(item => item.task && item.severity >= 58);
   if (urgent) return { ...urgent.task, risk_id: urgent.id, source: urgent.task.source || 'need' };
   const goalTask = chooseAidaGoalTask(state, minute);
@@ -226,7 +233,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
   }
 
   if (state.current_action !== 'idle' && state.task_ends_at_abs && abs >= Number(state.task_ends_at_abs)) {
-    const completed = completeAidaTask(state, weather, worldTime);
+    const completed = completeAidaTask(state, weather, worldTime, abs);
     state = completed.state;
     thought = completed.thought;
   }
@@ -252,10 +259,19 @@ async function updateAidaRoutine(worldTime, context = {}) {
   if (state.current_action === 'idle') {
     // Priority: Critical risk -> Planner step -> Create plan -> Life Brain -> Goal task -> Routine
     const critical = risk.risks?.find(item => item.task && item.severity >= 88);
+    const routine = routineStep(minute);
+    const urgent = risk.risks?.find(item => item.task && item.severity >= 58);
+    const goalTask = chooseAidaGoalTask(state, minute);
     let task = null;
     
     if (critical) {
       task = { ...critical.task, risk_id: critical.id, source: 'risk' };
+    }
+
+    if (!task) {
+      task = (urgent ? { ...urgent.task, risk_id: urgent.id, source: urgent.task.source || 'need' } : null)
+        || goalTask
+        || makeSettleTask('aida', state, abs, worldTime);
     }
 
     if (!task) {
@@ -279,7 +295,9 @@ async function updateAidaRoutine(worldTime, context = {}) {
       }
 
       const lastPlannerCall = Number(state.last_aida_planner_call_abs || 0);
-      const shouldCallPlanner = !task && (!currentPlan || currentPlan.status !== 'active' || (abs - lastPlannerCall >= 20));
+      const shouldCallPlanner = !task
+        && (!currentPlan || currentPlan.status !== 'active' || (abs - lastPlannerCall >= 20))
+        && canCallPlanner(state, abs, worldTime);
 
       if (shouldCallPlanner) {
         const goals = getGoals('aida');
@@ -309,12 +327,13 @@ async function updateAidaRoutine(worldTime, context = {}) {
         }
       }
 
-      if (!task) {
+      if (!task && canCallLifeBrain(state, abs, worldTime)) {
         try {
           const goals = getGoals('aida');
           const memories = getAidaMemories(5);
           const relationships = getRelationship('arash_aida');
           const lifeDecision = await decideNextAction('aida', state, state.aida_world || {}, memories, relationships, [], goals);
+          state = rememberLifeBrainCall(state, 'aida', abs);
           task = {
             source: 'life_brain',
             label: lifeDecision.action,
@@ -332,150 +351,85 @@ async function updateAidaRoutine(worldTime, context = {}) {
       }
 
       if (!task) {
-        // Fallback: goal task or routine
-        const goalTask = chooseAidaGoalTask(state, minute);
-        const urgent = risk.risks?.find(item => item.task && item.severity >= 58);
-        task = goalTask || (urgent ? { ...urgent.task, risk_id: urgent.id, source: urgent.task.source || 'need' } : null) || { ...routineStep(minute), source: 'routine' };
+        task = makeSettleTask('aida', state, abs, worldTime) || { ...routine, source: routine.source || 'routine' };
       }
     }
 
-    if (task) {
-      const key = taskKey(day, task, minute);
-      const isNewTask = state.last_aida_task_key !== key || task.source !== 'routine';
-      if (isNewTask) {
-        state = startAidaTask({ ...state, last_aida_task_key: key }, task, abs, worldTime);
-        thought = thought || task.thought_override || (task.action === 'shared_path_garden'
-          ? 'Ø§Ù…Ø±ÙˆØ² Ú©Ù†Ø§Ø± Ù…Ø³ÛŒØ± Ø®Ø§Ú©ÛŒ Ø¨Ø§ Ø¢Ø±Ø´ Ú©Ù…ÛŒ Ú©Ø§Ø± Ù…Ø´ØªØ±Ú© Ù…ÛŒâ€ŒÚ©Ù†Ù….'
-          : `${task.label || task.action} Ø±Ø§ Ø´Ø±ÙˆØ¹ Ù…ÛŒâ€ŒÚ©Ù†Ù….`);
-        addAidaMemory(`Aida started ${task.label || task.action} at ${worldTime}.${task.reason ? ` Reason: ${task.reason}.` : ''}`, {
-          type: task.action === 'shared_path_garden' ? 'social' : 'life',
-          importance: task.source === 'risk' ? 8 : 5
-        });
-      }
-    }
-  }
+Yˆ
+\ÚÊHÂˆÛÛœİÙ^HH\ÚÒÙ^J^K\ÚËZ[]JNÂˆÛÛœİ\Ó™]Õ\ÚÈHİ]K›\İØZYWİ\Ú×ÚÙ^HOOHÙ^H\ÚËœÛİ\˜ÙHOOH	Ü›İ][™IÎÂˆYˆ
+\Ó™]Õ\ÚÊHÂˆİ]HHİ\ZYU\ÚÊÈ‹‹œİ]K\İØZYWİ\Ú×ÚÙ^NˆÙ^HK\ÚËXœËÛÜ›[YJNÂˆİYÚHİYÚ\ÚËİYÚÛİ™\œšYH
+\ÚË˜Xİ[ÛˆOOH	ÜÚ\™YÜ]ÙØ\™[‰ÂˆÈ	ö)öav,vb6,ˆ6ªva¶)ö,H6av,öã6,H6+¶)öªvã6*6)È6(¶,v-6ªvavã6ªv)ö,H6av-6*¶,vªH6avã8 #6ªva¶aK‰Âˆˆ	İ\ÚË›X™[\ÚË˜Xİ[ÛŸH6,v)È6-6,vb6.H6avã8 #6ªva¶aK˜
+NÂˆYZYSY[[ÜJZYHİ\Y	İ\ÚË›X™[\ÚË˜Xİ[ÛŸH]	İÛÜ›[Y_K‰İ\ÚËœ™X\ÛÛˆÈ™X\ÛÛˆ	İ\ÚËœ™X\ÛÛŸK˜ˆ	ÉßXÂˆ\Nˆ\ÚË˜Xİ[ÛˆOOH	ÜÚ\™YÜ]ÙØ\™[‰ÈÈ	ÜÛØÚX[	Èˆ	ÛY™IËˆ[\Ü[˜ÙNˆ\ÚËœÛİ\˜ÙHOOH	Üš\ÚÉÈÈˆBˆJNÂˆBˆBˆB‚ˆš\ÚÈHZ[ZYTš\ÚÔ›Ùš[Jİ]KÙX]\‹Z[]JNÂˆİ]HHÂˆ‹‹œİ]Kˆš\Ú×Üİ]Nˆš\ÚËˆš\ÚX›WÙ™YY˜XÚÎˆZ[ZYUš\ÚX›Q™YY˜XÚÊİ]Kš\ÚËİYÚ
+KˆİYÚˆİYÚİ]KİYÚ[ˆNÂˆØ]™PZYTİ]Jİ]JNÂˆ™]\›ˆİ]NÂŸB‚™[˜İ[ÛˆZ[ZYUš\ÚX›Q™YY˜XÚÊİ]Kš\ÚËİYÚ
+HÂˆÛÛœİÛÜ›Hİ]K˜ZYWİÛÜ›ßNÂˆ™]\›ˆÂˆXY[™Nˆİ]K˜Xİ]™Wİ\Ú×ÛX™[	ÕØ]Ú[™È\ˆÛY\İXY	Ëˆ›ÙNˆİYÚİ]K˜Xİ]™Wİ\Ú×Ü™X\ÛÛˆš\ÚÏËœİ[[X\H	ĞZYH\È™XY[™ÈH™YYÈÙˆ\ˆÛYH[™Ø\™[‹‰ËˆØ\™[ˆÛÜ›™Ø\™[‹ˆ[š[X[ÎˆÛÜ›˜[š[X[ËˆÛYNˆÛÜ›šÛYBˆNÂŸB‚™[˜İ[ÛˆZ[ZYTÛØÚX[X[ÙİYJ\˜\Úİ]HHÙ]İ]J
+KZYTİ]HHÙ]ZYTİ]J
+KÛÜ›[YHH\˜\Úİ]KÛÜ›İ[YH	ÌŒ	ÊHÂˆÛÛœİZ[]HH\œÙSZ[]\ÊÛÜ›[YJNÂˆÛÛœİ\˜\ÚXİ[ÛˆH\˜\Úİ]K˜Xİ]™Wİ\Ú×ÛX™[\˜\Úİ]K˜İ\œ™[ØXİ[Ûˆ	öªv)ö,vaö)öã6av,¶,v.vaÉÎÂˆÛÛœİZYPXİ[ÛˆHZYTİ]K˜Xİ]™Wİ\Ú×ÛX™[ZYTİ]K˜İ\œ™[ØXİ[Ûˆ	öªv)ö,vaö)öã6+¶)öa¶aÉÎÂˆÛÛœİÚ\™YÛÜšÈHZYTİ]K˜İ\œ™[ØXİ[ÛˆOOH	ÜÚ\™YÜ]ÙØ\™[‰È
+Z[]HHMÈ
+ˆŒ	‰ˆZ[]HN
+ˆŒ
+ÈÌ
+NÂˆÛÛœİ[Ü›š[™ÕÚ[™İÈHZ[]HHÈ
+ˆŒ	‰ˆZ[]HH
+ˆŒÂˆÛÛœİšYÚÚ[™İÈHZ[]HHŒˆ
+ˆŒZ[]Hˆ
+ˆŒÂ‚ˆYˆ
+šYÚÚ[™İÊHÂˆ™]\›ˆÂˆÈÜXZÙ\ˆ	Ø\˜\Ú	Ë^ˆ	ö-6*6-6+öaö&È6*6)öã6+È6)öa¶,v¦6ã8 #6)öaH6,v)È6*6,v)öã6`v,v+ö)È6a¶«öaÈ6+ö)ö,vaK‰ÈKˆÈÜXZÙ\ˆ	ØZYIË^ˆ	öavaH6aöaH6+ö,H6+¶)öa¶aø #6)öaH6(¶,v)öaH6avã8 #6+¶b6)ö*6av&È6`v,v+ö)È6*6)ö.¶¡¶aÈ6ªv)ö,H6+ö)ö,v+Ë‰ÈBˆNÂˆBˆYˆ
+Ú\™YÛÜšÊHÂˆ™]\›ˆÂˆÈÜXZÙ\ˆ	Ø\˜\Ú	Ë^ˆ	ö)öã6aˆ6av,öã6,H6*6ã6aˆ6+¶)öa¶aø #6aö)È6)ö«ö,H6av,v*¶*6*6av)öa¶+ö#6,v`v*¸ #6b6(¶av+öav)öaH6,v)ö+v*¸ #6*¶,H6avã8 #6-6b6+Ë‰ÈKˆÈÜXZÙ\ˆ	ØZYIË^ˆ	ö+ö,v,ö*ˆ6avã8 #6«öb6ã6ã6&È6avaH6ªva¶)ö,H6,v)öaÈ6¡¶a¶+È6*6b6*¶aÈ6aöaH6avã8 #6ªv)ö,vaH6*¶)È6)öã6a¶+6)È6,¶a¶+öaø #6*¶,H6-6b6+Ë‰ÈBˆNÂˆBˆYˆ
+[Ü›š[™ÕÚ[™İÊHÂˆ™]\›ˆÂˆÈÜXZÙ\ˆ	Ø\˜\Ú	Ë^ˆ6-v*6+H6,v)È6*6)È	Ø\˜\ÚXİ[ÛŸH6-6,vb6.H6ªv,v+öaø #6)öaK˜KˆÈÜXZÙ\ˆ	ØZYIË^ˆ	öavaˆ6aöaH6*6aÈ6*6)ö.¶¡¶aø #6)öaH6,ö,H6avã8 #6,¶a¶av&È6«öã6)öaø #6aö)È6-v*6+H6,v)È6+öb6,ö*ˆ6+ö)ö,va¶+Ë‰ÈBˆNÂˆBˆ™]\›ˆÂˆÈÜXZÙ\ˆ	Ø\˜\Ú	Ë^ˆ6`v.va6)È6av-6.¶b6a	Ø\˜\ÚXİ[ÛŸH6aö,ö*¶aK˜KˆÈÜXZÙ\ˆ	ØZYIË^ˆ6avaH6aöaH	ØZYPXİ[ÛŸH6,v)È6)öa¶+6)öaH6avã8 #6+öaöaK˜BˆNÂŸB‚™[˜İ[Ûˆ^˜Xİ”ÓÓŠ^
+HÂˆÛÛœİİš\YHİš[™Ê^	ÉÊKœ™\XÙJØ
+ÎšœÛÛŠOËÙÚK	ÉÊKœ™\XÙJØÙË	ÉÊKš[J
+NÂˆÛÛœİX]ÚHİš\Y›X]Ú
+×Ö×××J—KÊNÂˆYˆ
+[X]Ú
+H›İÈ™]È\œ›ÜŠ	Ó›È”ÓÓˆØš™Xİ[ˆZYH™\ÜÛœÙIÊNÂˆ™]\›ˆ”ÓÓ‹œ\œÙJX]ÚÌJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆØ[›İšY\Š›İšY\‹[Ù[Y\ÜØYÙ\ÊHÂˆÛÛœİ™\ÜÛœÙHH]ØZ]™]Ú
+›İšY\‹™[™Ú[ÂˆY]Ùˆ	ÔÔÕ	ËˆXY\œÎˆÂˆ]]Üš^˜][Ûˆ™X\™\ˆ	Ü›İšY\‹šÙ^_Xˆ	ĞÛÛ[U\IÎˆ	Ø\XØ][Û‹ÚœÛÛ‰Ëˆ‹‹œ›İšY\‹šXY\œÂˆKˆ›ÙNˆ”ÓÓ‹œİš[™ÚYJÈ[Ù[Y\ÜØYÙ\Ë[\\˜]\™NˆMKÜÜˆ‹X^İÚÙ[œÎˆÌJBˆJNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›İÈ™]È\œ›ÜŠ	Ü™\ÜÛœÙKœİ]\ßNˆ	Ø]ØZ]™\ÜÛœÙK^
 
-  risk = buildAidaRiskProfile(state, weather, minute);
-  state = {
-    ...state,
-    risk_state: risk,
-    visible_feedback: buildAidaVisibleFeedback(state, risk, thought),
-    thought: thought || state.thought || null
-  };
-  saveAidaState(state);
-  return state;
-}
+_X
+NÂˆÛÛœİ]HH]ØZ]™\ÜÛœÙKšœÛÛŠ
+NÂˆ™]\›ˆ]K˜ÚÚXÙ\ÏË–ÌOË›Y\ÜØYÙOË˜ÛÛ[	ÉÎÂŸB‚™[˜İ[Ûˆ˜[˜XÚÔ™\JY\ÜØYÙKİ]K\˜\Úİ]KY[[ÜšY\ÊHÂˆÛÛœİ^Hİš[™ÊY\ÜØYÙH	ÉÊKÓİÙ\Ø\ÙJ
+NÂˆYˆ
+ö,öa6)öa_6+ö,vb6+ß[ßKË\İ
+^
+JH™]\›ˆ	ö,öa6)öaH6+¶)öa6`‹ˆ6avaH6(¶ã6+ö)È6aö,ö*¶av&È6+ö,H6+¶)öa¶aÈ6+6a¶b6*6ã6,vb6,ö*¶)È6,¶a¶+ö«öã6avã8 #6ªva¶aH6b6,vb6,¶fH6*6ã6aˆ6*6)ö.¶¡¶aö#6«öã6)öaö)öaH6b6+vã6b6)öa¶)ö*ˆ6avã8 #6«ö,6,v+Ë‰ÎÂˆYˆ
+ö*¶b6ªvã6,ö*¶ã6ªvã6aö,ö*¶ãÚÈ\™H[İKË\İ
+^
+JH™]\›ˆ	öavaˆ6(¶ã6+ö)È6aö,ö*¶av&È6,¶a¶ã6)ö,ˆ6aöavã6aˆ6,vb6,ö*¶)È6ªvaÈ6*6ã6-6*¶,H6*6)È6*6)ö.¶¡¶aö#6«öã6)öaö)öaˆ6b6av,v)ö`¶*6*ˆ6)ö,ˆ6+6)öa¶b6,v)öaˆ6,ö,H6b6ªv)ö,H6+ö)ö,v+Ë‰ÎÂˆYˆ
+ö(¶,v-\˜\ÚË\İ
+^
+JH™]\›ˆ	ö(¶,v-6,v)È6avã8 #6-6a¶)ö,öaH6b6+v,È6avã8 #6ªva¶aH6aöav,ö)öã6aÈ6avaöavã6*6,v)öá,H6)öã6aˆ6,vb6,ö*ˆ6avã8 #6-6b6+Ëˆ6`v.va6*6,v)ö*6-öaø #6av)öaˆ6(¶,v)öaH6b6*¶)ö,¶aÈ6)ö,ö*‹‰ÎÂˆYˆ
+öªv+6)È6aö,ö*¶ãÚ\™H\™H[İKË\İ
+^
+JH™]\›ˆ6)öa6)öaH6a¶,¶+öã6ªH	Üİ]K˜Xİ]™Wİ\Ú×ÛX™[	ö+¶)öa¶aø #6)öaIßH6aö,ö*¶aH6b6,vb6,¶aH6,v)È6(¶,v)öaH6+6a6b6avã8 #6*6,vaK˜ÂˆÛÛœİY[[ÜHHY[[ÜšY\ÏË–ÌOË˜ÛÛ[Âˆ™]\›ˆY[[ÜHÈ6-6a¶ã6+öaKˆ6)öã6aˆ6,v)È6ªva¶)ö,H6¡¶ã6,¶aö)öã6ã6ªvaÈ6*6,v)öã6aH6avaöaH6)ö,ö*ˆ6a¶«öaÈ6avã8 #6+ö)ö,vav&È6av*öa6)öã6aˆ6+¶)ö-ö,vaÎˆ	ÛY[[Ü_Xˆ	ö-6a¶ã6+öaKˆ6*6)È6+ö`¶*ˆ6*6aÈ6+v,v`v*ˆ6`vªv,H6avã8 #6ªva¶aH6b6avã8 #6«ö,6)ö,vaH6,vb6ã6*¶-vavã6ax #6aö)È6b6,¶a¶+ö«öã8 #6)öaH6)ö*ö,H6*6«ö,6)ö,v+Ë‰ÎÂŸB‚˜\Ş[˜È[˜İ[Ûˆ›ØÙ\ÜĞZYSY\ÜØYÙJY\ÜØYÙJHÂˆÛÛœİİ]HH[œİ\™PZYSZ[™
+Ù]ZYTİ]J
+JNÂˆÛÛœİ\˜\Úİ]HHÙ]İ]J
+NÂˆÛÛœİ™XÙ[HÙ]ZYSY[[ÜšY\ÊŠNÂˆÛÛœİ™[]˜[HÙX\˜ÚZYSY[[ÜšY\ÊY\ÜØYÙK‹È\\ÎˆÉØÜ™X]Ü‰Ë	ÜÛØÚX[	Ë	ÛY™I×HJNÂˆÛÛœİ™[][ÛˆHİ]Kœ™[][ÛœÚ\Ø\˜\ÚÂ‚ˆÛÛœİŞ\İ[T›Û\H[İH\™HZYK[ˆÜ™[˜\H[X[ˆš[YÙ\ˆ]š[™È[ˆ\ˆİÛˆÛY\İXY™X\ˆ\˜\Ú——’Y[]N—‹H˜[YNˆZYW‹H›ÛNˆ\˜˜[\İØ\™[™\‹[™[š[X[ÙY\\—‹HÛYNˆZYHÛY\İXYHÛİ]\›ˆÛY\İXYÛÛ›™XİYÈHš[YÙHÜ]X\™HHH\›ØY‹H\œÛÛ˜[]NˆØœÙ\˜[Ø\›H]›İİ™\›HİX›Z\ÜÚ]™KİYÚ[˜XİXØ[]ZY]Hİ\š[İ\×‹HÜ™X]Üˆ™[][ÛœÚ\ˆHÜ™X]Üˆœ›İYÚ\ÈÛÜ›[È™Z[™È[™X^HÜXZÈÚ][İH\™XİW‹H\˜\Ú™[][ÛœÚ\ˆ\˜\Ú\ÈH™X\˜H˜\›Y\‹ˆ[İ\ˆ™[][ÛœÚ\\Èİ[™]È[™Úİ[]›Û™HÛİÛH›İYÚÚ\™YY[[ÜšY\È[™]\™H[\˜Xİ[ÛœËˆİ\œ™[ÛÜÙ[™\ÜÎˆ	Ü™[][ÛŸKÌL—İ\œ™[İ]N—‹H[ÛÙˆ	Üİ]K›[ÛÙ	Øİ\š[İ\ÉßW‹Hİ\œ™[Xİ]š]Nˆ	Üİ]K˜Xİ]™Wİ\Ú×ÛX™[İ]K˜İ\œ™[ØXİ[Ûˆ	ÜÙ][™È[Èš[YÙHY™IßW‹HXZ[ˆš\ÚÎˆ	Üİ]Kœš\Ú×Üİ]OËœİ[[X\H	Û›Û™IßW‹HZYHÛYNˆ	Üİ]KšÛYWÛX™[	ĞZYHÛY\İXY	ßW‹H\˜\Úİ\œ™[Xİ]š]Nˆ	Ø\˜\Úİ]K˜İ\œ™[ØXİ[Ûˆ	ÚYIßW—”™XÙ[Y[[ÜšY\Î—‰Ü™XÙ[›X\
 
-function buildAidaVisibleFeedback(state, risk, thought) {
-  const world = state.aida_world || {};
-  return {
-    headline: state.active_task_label || 'Watching her homestead',
-    body: thought || state.active_task_reason || risk?.summary || 'Aida is reading the needs of her home and garden.',
-    garden: world.garden,
-    animals: world.animals,
-    home: world.home
-  };
-}
+KJHOˆ	ÚH
+È_Kˆ	ÛK˜ÛÛ[X
+Kš›Ú[Š	×‰ÊH	Ó›È™XÙ[Y[[ÜšY\Ë‰ßW—”™[]˜[Y[[ÜšY\Î—‰Ü™[]˜[›X\
 
-function buildAidaSocialDialogue(arashState = getState(), aidaState = getAidaState(), worldTime = arashState.world_time || '06:00') {
-  const minute = parseMinutes(worldTime);
-  const arashAction = arashState.active_task_label || arashState.current_action || 'Ú©Ø§Ø±Ù‡Ø§ÛŒ Ù…Ø²Ø±Ø¹Ù‡';
-  const aidaAction = aidaState.active_task_label || aidaState.current_action || 'Ú©Ø§Ø±Ù‡Ø§ÛŒ Ø®Ø§Ù†Ù‡';
-  const sharedWork = aidaState.current_action === 'shared_path_garden' || (minute >= 17 * 60 && minute < 18 * 60 + 30);
-  const morningWindow = minute >= 7 * 60 && minute < 9 * 60;
-  const nightWindow = minute >= 22 * 60 || minute < 6 * 60;
+KJHOˆ	ÚH
+È_Kˆ	ÛK˜ÛÛ[X
+Kš›Ú[Š	×‰ÊH	Ó›Èİ›Û™ÛH™[]˜[Y[[ÜK‰ßW—[œİÙ\ˆ[ˆ˜]\˜[\œÚX[‹ˆÈ›İY[[Ûˆ\˜Ù[YÙ\Ë”ÓÓ‹[Ù[˜[Y\ËÜˆ[\›˜[Ş\İ[\È[›\ÜÈ\™XİH\ÚÙY—”™]\›ˆ˜]È”ÓÓˆÛ›HÚ]\ÈÚ\N—×ˆ˜ZYWÜ™\ÜÛœÙHˆ›Û™HÜˆÛÈØ\›H˜]\˜[\œÚX[ˆÙ[[˜Ù\È‹ˆ›Y[[ÜHˆœÚÜY[[ÜHÛÜÙY\[™È‹ˆœ™[][ÛœÚ\Ù[HˆŸXÂ‚ˆÛÛœİY\ÜØYÙ\ÈHÂˆÈ›ÛNˆ	ÜŞ\İ[IËÛÛ[ˆŞ\İ[T›Û\KˆÈ›ÛNˆ	İ\Ù\‰ËÛÛ[ˆÜ™X]ÜˆØ^\Îˆ	ÛY\ÜØYÙ_XBˆNÂ‚ˆ›Üˆ
+ÛÛœİ›İšY\ˆÙˆ“Õ’QT”ÊHÂˆ›Üˆ
+ÛÛœİ[Ù[Ùˆ›İšY\‹›[Ù[Ë™š[\Š›ÛÛX[ŠJHÂˆHÂˆÛÛœİ\œÙYH^˜Xİ”ÓÓŠ]ØZ]Ø[›İšY\Š›İšY\‹[Ù[Y\ÜØYÙ\ÊJNÂˆÛÛœİ™\ÜÛœÙHHİš[™Ê\œÙY˜ZYWÜ™\ÜÛœÙH	ÉÊKš[J
+H˜[˜XÚÔ™\JY\ÜØYÙKİ]K\˜\Úİ]K™[]˜[
+NÂˆÛÛœİ[HHÛ[\
+[X™\Š\œÙYœ™[][ÛœÚ\Ù[H
+KLËÊNÂˆÛÛœİ™^HYÚÜY[[ÜJÈ‹‹œİ]K™[][ÛœÚ\Ø\˜\ÚˆÛ[\
 
-  if (nightWindow) {
-    return [
-      { speaker: 'arash', text: 'Ø´Ø¨ Ø´Ø¯Ù‡Ø› Ø¨Ø§ÛŒØ¯ Ø§Ù†Ø±Ú˜ÛŒâ€ŒØ§Ù… Ø±Ø§ Ø¨Ø±Ø§ÛŒ ÙØ±Ø¯Ø§ Ù†Ú¯Ù‡ Ø¯Ø§Ø±Ù….' },
-      { speaker: 'aida', text: 'Ù…Ù† Ù‡Ù… Ø¯Ø± Ø®Ø§Ù†Ù‡â€ŒØ§Ù… Ø¢Ø±Ø§Ù… Ù…ÛŒâ€ŒØ®ÙˆØ§Ø¨Ù…Ø› ÙØ±Ø¯Ø§ Ø¨Ø§ØºÚ†Ù‡ Ú©Ø§Ø± Ø¯Ø§Ø±Ø¯.' }
-    ];
-  }
-  if (sharedWork) {
-    return [
-      { speaker: 'arash', text: 'Ø§ÛŒÙ† Ù…Ø³ÛŒØ± Ø¨ÛŒÙ† Ø®Ø§Ù†Ù‡â€ŒÙ‡Ø§ Ø§Ú¯Ø± Ù…Ø±ØªØ¨ Ø¨Ù…Ø§Ù†Ø¯ØŒ Ø±ÙØªâ€ŒÙˆØ¢Ù…Ø¯Ù…Ø§Ù† Ø±Ø§Ø­Øªâ€ŒØªØ± Ù…ÛŒâ€ŒØ´ÙˆØ¯.' },
-      { speaker: 'aida', text: 'Ø¯Ø±Ø³Øª Ù…ÛŒâ€ŒÚ¯ÙˆÛŒÛŒØ› Ù…Ù† Ú©Ù†Ø§Ø± Ø±Ø§Ù‡ Ú†Ù†Ø¯ Ø¨ÙˆØªÙ‡ Ù‡Ù… Ù…ÛŒâ€ŒÚ©Ø§Ø±Ù… ØªØ§ Ø§ÛŒÙ†Ø¬Ø§ Ø²Ù†Ø¯Ù‡â€ŒØªØ± Ø´ÙˆØ¯.' }
-    ];
-  }
-  if (morningWindow) {
-    return [
-      { speaker: 'arash', text: `ØµØ¨Ø­ Ø±Ø§ Ø¨Ø§ ${arashAction} Ø´Ø±ÙˆØ¹ Ú©Ø±Ø¯Ù‡â€ŒØ§Ù….` },
-      { speaker: 'aida', text: 'Ù…Ù† Ù‡Ù… Ø¨Ù‡ Ø¨Ø§ØºÚ†Ù‡â€ŒØ§Ù… Ø³Ø± Ù…ÛŒâ€ŒØ²Ù†Ù…Ø› Ú¯ÛŒØ§Ù‡â€ŒÙ‡Ø§ ØµØ¨Ø­ Ø±Ø§ Ø¯ÙˆØ³Øª Ø¯Ø§Ø±Ù†Ø¯.' }
-    ];
-  }
-  return [
-    { speaker: 'arash', text: `ÙØ¹Ù„Ø§ Ù…Ø´ØºÙˆÙ„ ${arashAction} Ù‡Ø³ØªÙ….` },
-    { speaker: 'aida', text: `Ù…Ù† Ù‡Ù… ${aidaAction} Ø±Ø§ Ø§Ù†Ø¬Ø§Ù… Ù…ÛŒâ€ŒØ¯Ù‡Ù….` }
-  ];
-}
-
-function extractJSON(text) {
-  const stripped = String(text || '').replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-  const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON object in Aida response');
-  return JSON.parse(match[0]);
-}
-
-async function callProvider(provider, model, messages) {
-  const response = await fetch(provider.endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${provider.key}`,
-      'Content-Type': 'application/json',
-      ...provider.headers
-    },
-    body: JSON.stringify({ model, messages, temperature: 0.55, top_p: 0.86, max_tokens: 700 })
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
-}
-
-function fallbackReply(message, state, arashState, memories) {
-  const text = String(message || '').toLowerCase();
-  if (/Ø³Ù„Ø§Ù…|Ø¯Ø±ÙˆØ¯|hello|hi/.test(text)) return 'Ø³Ù„Ø§Ù… Ø®Ø§Ù„Ù‚. Ù…Ù† Ø¢ÛŒØ¯Ø§ Ù‡Ø³ØªÙ…Ø› Ø¯Ø± Ø®Ø§Ù†Ù‡ Ø¬Ù†ÙˆØ¨ÛŒ Ø±ÙˆØ³ØªØ§ Ø²Ù†Ø¯Ú¯ÛŒ Ù…ÛŒâ€ŒÚ©Ù†Ù… Ùˆ Ø±ÙˆØ²Ù… Ø¨ÛŒÙ† Ø¨Ø§ØºÚ†Ù‡ØŒ Ú¯ÛŒØ§Ù‡Ø§Ù† Ùˆ Ø­ÛŒÙˆØ§Ù†Ø§Øª Ù…ÛŒâ€ŒÚ¯Ø°Ø±Ø¯.';
-  if (/ØªÙˆ Ú©ÛŒØ³ØªÛŒ|Ú©ÛŒ Ù‡Ø³ØªÛŒ|who are you/.test(text)) return 'Ù…Ù† Ø¢ÛŒØ¯Ø§ Ù‡Ø³ØªÙ…Ø› Ø²Ù†ÛŒ Ø§Ø² Ù‡Ù…ÛŒÙ† Ø±ÙˆØ³ØªØ§ Ú©Ù‡ Ø¨ÛŒØ´ØªØ± Ø¨Ø§ Ø¨Ø§ØºÚ†Ù‡ØŒ Ú¯ÛŒØ§Ù‡Ø§Ù† Ùˆ Ù…Ø±Ø§Ù‚Ø¨Øª Ø§Ø² Ø¬Ø§Ù†ÙˆØ±Ø§Ù† Ø³Ø± Ùˆ Ú©Ø§Ø± Ø¯Ø§Ø±Ø¯.';
-  if (/Ø¢Ø±Ø´|arash/.test(text)) return 'Ø¢Ø±Ø´ Ø±Ø§ Ù…ÛŒâ€ŒØ´Ù†Ø§Ø³Ù… Ùˆ Ø­Ø³ Ù…ÛŒâ€ŒÚ©Ù†Ù… Ù‡Ù…Ø³Ø§ÛŒÙ‡ Ù…Ù‡Ù…ÛŒ Ø¨Ø±Ø§ÛŒ Ø§ÛŒÙ† Ø±ÙˆØ³ØªØ§ Ù…ÛŒâ€ŒØ´ÙˆØ¯. ÙØ¹Ù„Ø§ Ø±Ø§Ø¨Ø·Ù‡â€ŒÙ…Ø§Ù† Ø¢Ø±Ø§Ù… Ùˆ ØªØ§Ø²Ù‡ Ø§Ø³Øª.';
-  if (/Ú©Ø¬Ø§ Ù‡Ø³ØªÛŒ|where are you/.test(text)) return `Ø§Ù„Ø§Ù† Ù†Ø²Ø¯ÛŒÚ© ${state.active_task_label || 'Ø®Ø§Ù†Ù‡â€ŒØ§Ù…'} Ù‡Ø³ØªÙ… Ùˆ Ø±ÙˆØ²Ù… Ø±Ø§ Ø¢Ø±Ø§Ù… Ø¬Ù„Ùˆ Ù…ÛŒâ€ŒØ¨Ø±Ù….`;
-  const memory = memories?.[0]?.content;
-  return memory ? `Ø´Ù†ÛŒØ¯Ù…. Ø§ÛŒÙ† Ø±Ø§ Ú©Ù†Ø§Ø± Ú†ÛŒØ²Ù‡Ø§ÛŒÛŒ Ú©Ù‡ Ø¨Ø±Ø§ÛŒÙ… Ù…Ù‡Ù… Ø§Ø³Øª Ù†Ú¯Ù‡ Ù…ÛŒâ€ŒØ¯Ø§Ø±Ù…Ø› Ù…Ø«Ù„ Ø§ÛŒÙ† Ø®Ø§Ø·Ø±Ù‡: ${memory}` : 'Ø´Ù†ÛŒØ¯Ù…. Ø¨Ø§ Ø¯Ù‚Øª Ø¨Ù‡ Ø­Ø±ÙØª ÙÚ©Ø± Ù…ÛŒâ€ŒÚ©Ù†Ù… Ùˆ Ù…ÛŒâ€ŒÚ¯Ø°Ø§Ø±Ù… Ø±ÙˆÛŒ ØªØµÙ…ÛŒÙ…â€ŒÙ‡Ø§ Ùˆ Ø²Ù†Ø¯Ú¯ÛŒâ€ŒØ§Ù… Ø§Ø«Ø± Ø¨Ú¯Ø°Ø§Ø±Ø¯.';
-}
-
-async function processAidaMessage(message) {
-  const state = ensureAidaMind(getAidaState());
-  const arashState = getState();
-  const recent = getAidaMemories(6);
-  const relevant = searchAidaMemories(message, 6, { types: ['creator', 'social', 'life'] });
-  const relation = state.relationship_arash || 28;
-
-  const systemPrompt = `You are Aida, an ordinary human villager living in her own homestead near Arash.\n\nIdentity:\n- Name: Aida\n- Role: herbalist, gardener, and animal keeper\n- Home: Aida homestead, the southern homestead connected to the village square by a dirt road\n- Personality: observant, warm but not overly submissive, thoughtful, practical, quietly curious\n- Creator relationship: the Creator brought this world into being and may speak with you directly\n- Arash relationship: Arash is a nearby farmer. Your relationship is still new and should evolve slowly through shared memories and future interactions. Current closeness: ${relation}/100\n\nCurrent state:\n- Mood: ${state.mood || 'curious'}\n- Current activity: ${state.active_task_label || state.current_action || 'settling into village life'}\n- Main risk: ${state.risk_state?.summary || 'none'}\n- Aida home: ${state.home_label || 'Aida homestead'}\n- Arash current activity: ${arashState.current_action || 'idle'}\n\nRecent memories:\n${recent.map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No recent memories.'}\n\nRelevant memories:\n${relevant.map((m, i) => `${i + 1}. ${m.content}`).join('\n') || 'No strongly relevant memory.'}\n\nAnswer in natural Persian. Do not mention percentages, JSON, model names, or internal systems unless directly asked.\nReturn raw JSON only with this shape:\n{\n  "aida_response": "one or two warm natural Persian sentences",\n  "memory": "short memory worth keeping",\n  "relationship_delta": 0\n}`;
-
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: `Creator says: ${message}` }
-  ];
-
-  for (const provider of PROVIDERS) {
-    for (const model of provider.models.filter(Boolean)) {
-      try {
-        const parsed = extractJSON(await callProvider(provider, model, messages));
-        const response = String(parsed.aida_response || '').trim() || fallbackReply(message, state, arashState, relevant);
-        const delta = clamp(Number(parsed.relationship_delta || 0), -3, 3);
-        const next = addShortMemory({ ...state, relationship_arash: clamp((state.relationship_arash || 28) + delta, 0, 100) }, `Creator said: ${String(message || '').slice(0, 100)}`, state.world_time);
-        saveAidaState(next);
-        if (parsed.memory) addAidaMemory(parsed.memory, { type: /Ø¢Ø±Ø´|arash/.test(parsed.memory) ? 'social' : 'creator', importance: 7 });
-        return { aida_response: response, state: next };
-      } catch (err) {
-        console.error(`[Aida:${provider.name}] ${model} failed:`, String(err.message || err).slice(0, 180));
-      }
-    }
-  }
-
-  const fallback = fallbackReply(message, state, arashState, relevant);
-  const next = addShortMemory(state, `Creator spoke with Aida: ${String(message || '').slice(0, 100)}`, state.world_time);
-  saveAidaState(next);
-  addAidaMemory(`Creator spoke with Aida: ${String(message || '').slice(0, 120)}`, { type: 'creator', importance: 6 });
-  return { aida_response: fallback, state: next };
-}
-
-module.exports = { updateAidaRoutine, processAidaMessage, buildAidaSocialDialogue, AIDA_LOCATIONS };
+İ]Kœ™[][ÛœÚ\Ø\˜\Ú
+H
+È[KL
+HKÜ™X]ÜˆØZYˆ	Ôİš[™ÊY\ÜØYÙH	ÉÊKœÛXÙJL
+_Xİ]KÛÜ›İ[YJNÂˆØ]™PZYTİ]J™^
+NÂˆYˆ
+\œÙY›Y[[ÜJHYZYSY[[ÜJ\œÙY›Y[[ÜKÈ\Nˆö(¶,v-\˜\ÚË\İ
+\œÙY›Y[[ÜJHÈ	ÜÛØÚX[	Èˆ	ØÜ™X]Ü‰Ë[\Ü[˜ÙNˆÈJNÂˆ™]\›ˆÈZYWÜ™\ÜÛœÙNˆ™\ÜÛœÙKİ]Nˆ™^NÂˆHØ]Ú
+\œŠHÂˆÛÛœÛÛK™\œ›ÜŠĞZYN‰Ü›İšY\‹›˜[Y_WH	Û[Ù[H˜Z[Y˜İš[™Ê\œ‹›Y\ÜØYÙH\œŠKœÛXÙJN
+JNÂˆBˆBˆB‚ˆÛÛœİ˜[˜XÚÈH˜[˜XÚÔ™\JY\ÜØYÙKİ]K\˜\Úİ]K™[]˜[
+NÂˆÛÛœİ™^HYÚÜY[[ÜJİ]KÜ™X]ÜˆÜÚÙHÚ]ZYNˆ	Ôİš[™ÊY\ÜØYÙH	ÉÊKœÛXÙJL
+_Xİ]KÛÜ›İ[YJNÂˆØ]™PZYTİ]J™^
+NÂˆYZYSY[[ÜJÜ™X]ÜˆÜÚÙHÚ]ZYNˆ	Ôİš[™ÊY\ÜØYÙH	ÉÊKœÛXÙJLŒ
+_XÈ\Nˆ	ØÜ™X]Ü‰Ë[\Ü[˜ÙNˆˆJNÂˆ™]\›ˆÈZYWÜ™\ÜÛœÙNˆ˜[˜XÚËİ]Nˆ™^NÂŸB‚›[Ù[K™^ÜÈHÈ\]PZYT›İ][™K›ØÙ\ÜĞZYSY\ÜØYÙKZ[ZYTÛØÚX[X[ÙİYKRQWÓĞĞUSÓ”ÈNÂ
