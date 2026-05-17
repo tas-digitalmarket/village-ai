@@ -1,108 +1,47 @@
 const { callAIModel, extractJSON, VALID_ACTIONS, LOCATIONS } = require('./ai');
+const { buildRuralRhythmContext, fitPlanToRuralRhythm } = require('./life-rhythm');
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CHARACTER-SPECIFIC ACTION / LOCATION TABLES
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Arash — farmer/general villager
- * Uses the global VALID_ACTIONS from ai.js plus a static fallback list.
- */
 const ARASH_ACTIONS = Array.isArray(VALID_ACTIONS) && VALID_ACTIONS.length > 0
   ? VALID_ACTIONS
-  : [
-      'idle', 'walking', 'chopping_wood', 'watering_crops', 'harvesting',
-      'eating', 'sleeping', 'running_to_shelter', 'sitting', 'fishing',
-      'tending_animals', 'checking_motorcycle', 'wandering', 'tending_crops'
-    ];
+  : ['idle', 'walking', 'chopping_wood', 'watering_crops', 'harvesting', 'eating', 'sleeping', 'running_to_shelter', 'sitting', 'fishing', 'tending_animals', 'checking_motorcycle', 'wandering', 'tending_crops'];
 
-/**
- * Arash locations — farm and village (keys from LOCATIONS in ai.js)
- */
-const ARASH_LOCATIONS = Object.keys(LOCATIONS).length > 0
+const ARASH_LOCATIONS = Object.keys(LOCATIONS || {}).length > 0
   ? Object.keys(LOCATIONS)
-  : ['home', 'bed', 'table', 'east_field', 'west_field', 'well',
-     'wood_stump', 'haystack', 'path_center', 'fishing_spot', 'motorcycle', 'fence_north'];
+  : ['home', 'bed', 'table', 'east_field', 'west_field', 'well', 'wood_stump', 'haystack', 'path_center', 'fishing_spot', 'motorcycle', 'fence_north'];
 
-/**
- * Aida — botanist / animal keeper / gardener
- * Includes her unique actions PLUS generic-compatible ones.
- */
 const AIDA_ACTIONS = [
-  // Generic (compatible with Aida's animation/state system)
-  'idle', 'walking', 'sitting', 'wandering',
-  'eating', 'sleeping', 'running_to_shelter',
-  // Aida-specific
-  'morning_garden', 'checking_herbs', 'village_errand', 'resting',
-  'animal_care', 'evening_prayer', 'watering_garden', 'shared_path_garden',
-  'neighbor_walk',
-  // Compatible generic actions Aida can also perform
+  'idle', 'walking', 'sitting', 'wandering', 'eating', 'sleeping', 'running_to_shelter',
+  'morning_garden', 'checking_herbs', 'village_errand', 'resting', 'animal_care',
+  'evening_prayer', 'watering_garden', 'shared_path_garden', 'neighbor_walk',
   'tending_animals', 'tending_crops', 'watering_crops'
 ];
 
-/**
- * Aida locations — her homestead and nearby village
- */
 const AIDA_LOCATIONS = [
-  'home', 'home_bed', 'home_table', 'herb_workbench',
-  'garden', 'well', 'barn', 'field',
-  'village_square', 'prayer_house', 'arash_path'
+  'home', 'home_bed', 'home_table', 'herb_workbench', 'garden', 'well', 'barn',
+  'field', 'village_square', 'prayer_house', 'arash_path'
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PUBLIC CHARACTER-AWARE HELPERS
-// ═══════════════════════════════════════════════════════════════════════════════
+function getValidActions(characterName) { return characterName === 'aida' ? AIDA_ACTIONS : ARASH_ACTIONS; }
+function getValidLocations(characterName) { return characterName === 'aida' ? AIDA_LOCATIONS : ARASH_LOCATIONS; }
+function getDefaultAction(characterName) { return characterName === 'aida' ? 'resting' : 'wandering'; }
+function getDefaultLocation(characterName) { return characterName === 'aida' ? 'home' : 'path_center'; }
+function isValidAction(characterName, action) { return getValidActions(characterName).includes(action); }
+function isValidLocation(characterName, location) { return getValidLocations(characterName).includes(location); }
 
-function getValidActions(characterName) {
-  return characterName === 'aida' ? AIDA_ACTIONS : ARASH_ACTIONS;
-}
-
-function getValidLocations(characterName) {
-  return characterName === 'aida' ? AIDA_LOCATIONS : ARASH_LOCATIONS;
-}
-
-function getDefaultAction(characterName) {
-  return characterName === 'aida' ? 'resting' : 'wandering';
-}
-
-function getDefaultLocation(characterName) {
-  return characterName === 'aida' ? 'home' : 'path_center';
-}
-
-function isValidAction(characterName, action) {
-  return getValidActions(characterName).includes(action);
-}
-
-function isValidLocation(characterName, location) {
-  return getValidLocations(characterName).includes(location);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// NORMALIZATION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Validate and sanitize a raw AI-generated plan.
- * Uses character-specific valid actions and locations.
- * Invalid Aida locations → 'home', invalid Arash locations → 'path_center'.
- */
-function normalizePlan(parsed, characterName) {
-  const defAction   = getDefaultAction(characterName);
+function normalizePlan(parsed = {}, characterName = 'arash') {
+  const defAction = getDefaultAction(characterName);
   const defLocation = getDefaultLocation(characterName);
-
   const steps = Array.isArray(parsed.steps) ? parsed.steps.map((step, idx) => {
     let action = step.action;
     if (!isValidAction(characterName, action)) {
-      console.warn(`[Planner:${characterName}] normalized invalid action "${action}" → "${defAction}"`);
+      console.warn(`[Planner:${characterName}] normalized invalid action "${action}" -> "${defAction}"`);
       action = defAction;
     }
-
     let location = step.location;
     if (!isValidLocation(characterName, location)) {
-      console.warn(`[Planner:${characterName}] normalized invalid location "${location}" → "${defLocation}"`);
+      console.warn(`[Planner:${characterName}] normalized invalid location "${location}" -> "${defLocation}"`);
       location = defLocation;
     }
-
     return {
       id: step.id || `step_${idx + 1}`,
       action,
@@ -126,126 +65,101 @@ function normalizePlan(parsed, characterName) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// FALLBACK PLAN
-// ═══════════════════════════════════════════════════════════════════════════════
+function fallbackPlan(characterName, state = {}, worldState = {}, goals = []) {
+  const rhythm = buildRuralRhythmContext(characterName, state, worldState, state.weather || 'sunny');
+  const action = rhythm.shouldSleep ? 'sleeping' : rhythm.shouldEat ? 'eating' : getDefaultAction(characterName);
+  const location = rhythm.shouldSleep
+    ? (characterName === 'aida' ? 'home_bed' : 'bed')
+    : rhythm.shouldEat
+      ? (characterName === 'aida' ? 'home_table' : 'table')
+      : getDefaultLocation(characterName);
 
-function fallbackPlan(characterName, state, worldState, goals) {
   return {
     character: characterName,
     active_goal: goals[0]?.id || 'none',
-    plan_reason: 'Fallback routine plan — AI unavailable',
+    plan_reason: `Fallback routine plan for ${rhythm.phase}`,
     status: 'active',
     steps: [{
       id: 'fallback_step_1',
-      action: getDefaultAction(characterName),
-      location: getDefaultLocation(characterName),
-      reason: 'Fallback active',
-      expected_result: 'Keep character occupied',
+      action,
+      location,
+      reason: 'Follow the believable rhythm of a rural human day',
+      expected_result: 'Keep body, home, and work in balance',
       status: 'pending'
     }],
-    should_replan_if: ['weather changes', 'energy is critical'],
+    should_replan_if: ['weather changes', 'energy is critical', 'hunger is critical', 'time of day changes'],
     memory: null,
     importance: 3,
-    created_at_time: state.world_time || '08:00'
+    created_at_time: state.world_time || '08:00',
+    rhythm_phase: rhythm.phase
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// AI PLAN CREATION
-// ═══════════════════════════════════════════════════════════════════════════════
+function describeWorldForPrompt(characterName, state = {}, worldState = {}) {
+  if (characterName === 'aida') {
+    return [
+      `garden moisture: ${worldState.garden?.moisture ?? 50}%`,
+      `garden health: ${worldState.garden?.health ?? 80}%`,
+      `animal hunger: ${worldState.animals?.hunger ?? 30}%`,
+      `herb stock: ${worldState.herbs?.stock ?? 5}`
+    ].join('\n- ');
+  }
+  return [
+    `east field growth: ${worldState.fields?.east?.growth || 0}%`,
+    `west field growth: ${worldState.fields?.west?.growth || 0}%`,
+    `food storage: ${worldState.storage?.food || 0}`,
+    `well water: ${worldState.well?.water_level ?? 0}%`
+  ].join('\n- ');
+}
 
-async function createPlan(characterName, characterState, worldState, memories, relationships, goals, recentEvents) {
-  const time    = characterState.world_time || '08:00';
-  const weather = characterState.weather    || 'sunny';
+async function createPlan(characterName, characterState = {}, worldState = {}, memories = [], relationships = {}, goals = [], recentEvents = []) {
+  const time = characterState.world_time || '08:00';
+  const weather = characterState.weather || 'sunny';
+  const validActions = getValidActions(characterName).join(', ');
+  const validLocations = getValidLocations(characterName).join(', ');
+  const memStr = memories.map(m => m.content || m).join(' | ') || '(none)';
+  const eventStr = recentEvents.map(e => e.title || e.note || e).join(' | ') || '(none)';
+  const trust = relationships?.trust ?? relationships?.arash_aida?.trust ?? 0;
+  const tension = relationships?.tension ?? relationships?.arash_aida?.tension ?? 0;
+  const rhythm = buildRuralRhythmContext(characterName, characterState, worldState, weather);
+  const identity = characterName === 'aida'
+    ? 'Aida is an independent Iranian village woman, gardener, herbalist, and animal keeper. She lives in her own homestead near Arash.'
+    : 'Arash is an ordinary Iranian village farmer. He lives on his farm, cares for fields, home, animals, tools, food, and slowly learns to trust Aida.';
 
-  const validActions    = getValidActions(characterName).join(', ');
-  const validLocations  = getValidLocations(characterName).join(', ');
-  const memStr          = memories.map(m => m.content || m).join(' | ') || '(none)';
-  const trust           = relationships?.trust ?? relationships?.arash_aida?.trust ?? 0;
-  const tension         = relationships?.tension ?? relationships?.arash_aida?.tension ?? 0;
+  const systemPrompt = `You are the long-term planner inside ${characterName}'s mind.
+${identity}
 
-  const systemPrompt = characterName === 'arash'
-    ? `You are the long-term planner inside Arash's mind.
-Arash is a human-like Iranian villager with a farm. He values hard work, solitude, and honesty.
-He has a growing but cautious relationship with his neighbour Aida.
-
-Current state:
-- time: ${time}  |  weather: ${weather}
-- energy: ${characterState.energy}%  |  hunger: ${characterState.hunger}%  |  mood: ${characterState.mood}
-- farm: east field growth ${worldState.fields?.east?.growth || 0}%, west field growth ${worldState.fields?.west?.growth || 0}%
-- food storage: ${worldState.storage?.food || 0} units
-- relationship with Aida: trust ${trust}, tension ${tension}
-- goals: ${JSON.stringify(goals.map(g => ({ id: g.id, title: g.title })))}
-- recent memories: ${memStr}
-
-Create a focused multi-step plan (2–4 steps) for Arash to pursue ONE important goal.
-Return ONLY raw JSON (no markdown, no code fences). Reasons may be in English or Persian.
-
-VALID ACTIONS (use ONLY these): ${validActions}
-VALID LOCATIONS (use ONLY these): ${validLocations}
-
-JSON format:
-{
-  "character": "arash",
-  "active_goal": "goal_id",
-  "plan_reason": "Why this plan",
-  "steps": [
-    { "id": "step_1", "action": "ACTION", "location": "LOCATION", "reason": "why", "expected_result": "what happens" }
-  ],
-  "should_replan_if": ["condition"],
-  "memory": "Arash decided to...",
-  "importance": 6
-}`
-
-    : `You are the long-term planner inside Aida's mind.
-Aida is an independent Iranian villager: botanist, animal keeper, and gardener.
-She lives near Arash and has her own homestead with a herb garden, small animals, and workbench.
+Rural human rhythm rules:
+- ${rhythm.summary}
 
 Current state:
-- time: ${time}  |  weather: ${weather}
-- energy: ${characterState.energy}%  |  hunger: ${characterState.hunger}%  |  mood: ${characterState.mood}
-- garden moisture: ${worldState.garden?.moisture ?? 50}%  |  garden health: ${worldState.garden?.health ?? 80}%
-- animal hunger: ${worldState.animals?.hunger ?? 30}%  |  herb stock: ${worldState.herbs?.stock ?? 5}
-- relationship with Arash: trust ${trust}, tension ${tension}
-- goals: ${JSON.stringify(goals.map(g => ({ id: g.id, title: g.title })))}
+- time: ${time} | weather: ${weather}
+- energy: ${characterState.energy}% | hunger: ${characterState.hunger}% | mood: ${characterState.mood}
+- world: ${describeWorldForPrompt(characterName, characterState, worldState)}
+- relationship trust with the other villager: ${trust}, tension: ${tension}
+- goals: ${JSON.stringify((goals || []).map(g => ({ id: g.id, title: g.title, priority: g.priority })))}
 - recent memories: ${memStr}
+- recent events: ${eventStr}
 
-Create a focused multi-step plan (2–4 steps) for Aida to pursue ONE important goal.
-Return ONLY raw JSON (no markdown, no code fences). Reasons may be in English or Persian.
+Create a focused 2-4 step plan for ONE important goal.
+The first step must fit the current rhythm phase. Do not send a tired or hungry person into optional work. At night, choose sleep unless there is a true emergency. Around meals, eating is normal. Around noon, rest is normal. Morning is best for hard outdoor work.
+Return ONLY raw JSON. Reasons may be Persian or English.
 
-VALID ACTIONS — use ONLY these (Aida-specific): ${validActions}
-VALID LOCATIONS — use ONLY these (Aida-specific): ${validLocations}
+VALID ACTIONS: ${validActions}
+VALID LOCATIONS: ${validLocations}
 
-Aida lives on her homestead. She goes to: garden, barn, herb_workbench, village_square, prayer_house.
-Do NOT use Arash locations like east_field, west_field, bed, path_center, wood_stump, haystack.
-
-JSON format:
-{
-  "character": "aida",
-  "active_goal": "goal_id",
-  "plan_reason": "Why this plan",
-  "steps": [
-    { "id": "step_1", "action": "ACTION", "location": "LOCATION", "reason": "why", "expected_result": "what happens" }
-  ],
-  "should_replan_if": ["condition"],
-  "memory": "Aida decided to...",
-  "importance": 6
-}`;
+JSON shape:
+{"character":"${characterName}","active_goal":"goal_id","plan_reason":"why","steps":[{"id":"step_1","action":"ACTION","location":"LOCATION","reason":"why","expected_result":"what happens"}],"should_replan_if":["condition"],"memory":"short memory","importance":6}`;
 
   try {
-    const text   = await callAIModel([
+    const text = await callAIModel([
       { role: 'system', content: systemPrompt },
-      { role: 'user',   content: `Create a realistic multi-step plan for ${characterName} right now.` }
+      { role: 'user', content: `Create a realistic rural-life plan for ${characterName} right now.` }
     ]);
-    const parsed = extractJSON(text);
-    const plan   = normalizePlan(parsed, characterName);
+    const plan = fitPlanToRuralRhythm(characterName, normalizePlan(extractJSON(text), characterName), characterState, worldState, weather);
     plan.created_at_time = time;
-
     const firstStep = plan.steps[0];
-    if (firstStep) {
-      console.log(`[Planner:${characterName}] Plan created | goal: ${plan.active_goal} | first step: ${firstStep.action} @ ${firstStep.location}`);
-    }
+    if (firstStep) console.log(`[Planner:${characterName}] Plan created | ${rhythm.phase} | ${firstStep.action} @ ${firstStep.location}`);
     return plan;
   } catch (error) {
     console.error(`[Planner:${characterName}] createPlan failed:`, error.message);
@@ -253,24 +167,18 @@ JSON format:
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PLAN MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════════
-
 function getNextPlanStep(characterName, currentPlan) {
   if (!currentPlan || currentPlan.status !== 'active') return null;
   const step = currentPlan.steps.find(s => s.status === 'pending') || null;
-  if (step) {
-    console.log(`[Planner:${characterName}] next step: ${step.action} @ ${step.location} (id: ${step.id})`);
-  }
+  if (step) console.log(`[Planner:${characterName}] next step: ${step.action} @ ${step.location} (id: ${step.id})`);
   return step;
 }
 
 function markPlanStepDone(characterName, plan, stepId) {
   if (!plan) return null;
-  const steps  = plan.steps.map(s => s.id === stepId ? { ...s, status: 'done' } : s);
+  const steps = plan.steps.map(s => s.id === stepId ? { ...s, status: 'done' } : s);
   const allDone = steps.every(s => s.status === 'done');
-  const status  = allDone ? 'completed' : 'active';
+  const status = allDone ? 'completed' : 'active';
   console.log(`[Planner:${characterName}] completed step: ${stepId}`);
   if (allDone) console.log(`[Planner:${characterName}] plan completed (goal: ${plan.active_goal})`);
   return { ...plan, steps, status };
@@ -282,26 +190,19 @@ function invalidatePlan(characterName, plan, reason) {
   return { ...plan, status: 'invalidated', invalidation_reason: reason };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════════
-
 module.exports = {
-  // Core plan lifecycle
   createPlan,
   getNextPlanStep,
   markPlanStepDone,
   invalidatePlan,
   fallbackPlan,
   normalizePlan,
-  // Character-aware helpers (used by life-brain.js and externally)
   getValidActions,
   getValidLocations,
   getDefaultAction,
   getDefaultLocation,
   isValidAction,
   isValidLocation,
-  // Raw tables (for reference / testing)
   ARASH_ACTIONS,
   ARASH_LOCATIONS,
   AIDA_ACTIONS,
