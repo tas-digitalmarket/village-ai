@@ -110,6 +110,7 @@ function fitPlanToRuralRhythm(characterName, plan = {}, state = {}, worldState =
   const first = plan.steps[0];
   const fitted = fitDecisionToRuralRhythm(characterName, first, state, worldState, weather);
   if (!fitted.rhythm_adjusted) return { ...plan, rhythm_phase: fitted.rhythm_phase };
+  const rhythmTakesOverPlan = ['sleeping', 'eating', 'resting', 'sitting', 'running_to_shelter'].includes(fitted.action);
   const steps = [
     {
       ...first,
@@ -118,12 +119,12 @@ function fitPlanToRuralRhythm(characterName, plan = {}, state = {}, worldState =
       reason: fitted.reason,
       expected_result: 'Keeps the day believable and protects basic human rhythm.'
     },
-    ...plan.steps.slice(1)
+    ...(rhythmTakesOverPlan ? [] : plan.steps.slice(1))
   ];
   return {
     ...plan,
     steps,
-    plan_reason: `${plan.plan_reason || 'Plan'} | adjusted for rural daily rhythm`,
+    plan_reason: `${plan.plan_reason || 'Plan'} | adjusted for rural daily rhythm${rhythmTakesOverPlan ? ' and paused optional follow-up steps' : ''}`,
     rhythm_phase: fitted.rhythm_phase,
     rhythm_adjusted: true
   };
