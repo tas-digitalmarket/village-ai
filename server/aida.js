@@ -21,6 +21,13 @@ const {
 const { createPlan, getNextPlanStep, markPlanStepDone, invalidatePlan } = require('./agent-planner');
 const { decideNextAction } = require('./life-brain');
 const {
+  canCallPlanner,
+  canCallLifeBrain,
+  markCompletedTempo,
+  makeSettleTask,
+  rememberLifeBrainCall
+} = require('./decision-tempo');
+const {
   parseMinutes,
   absoluteMinute,
   ensureAidaMind,
@@ -128,7 +135,7 @@ function startAidaTask(state, task, absMinute, worldTime) {
   }, `Aida started ${task.label || task.action}.`, worldTime);
 }
 
-function completeAidaTask(state, weather, worldTime) {
+function completeAidaTask(state, weather, worldTime, absMinute) {
   const action = state.current_action;
   const location = state.active_task_location || 'home';
   if (!action || action === 'idle') return { state, thought: null };
@@ -177,7 +184,7 @@ function completeAidaTask(state, weather, worldTime) {
 
   addAidaMemory(`Aida completed ${label} at ${worldTime}.${notes}`, { type: action === 'shared_path_garden' ? 'social' : 'life', importance: result.outcome.success ? 6 : 7 });
   return {
-    state: addShortMemory({
+    state: markCompletedTempo(addShortMemory({
       ...result.state,
       current_action: 'idle',
       active_task_label: null,
@@ -190,7 +197,7 @@ function completeAidaTask(state, weather, worldTime) {
       active_plan_step_id: null,
       task_started_at_abs: null,
       task_ends_at_abs: null
-    }, `Aida finished ${label}.`, worldTime),
+    }, `Aida finished ${label}.`, worldTime), absMinute, label, state.active_task_source),
     thought
   };
 }
@@ -226,7 +233,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
   }
 
   if (state.current_action !== 'idle' && state.task_ends_at_abs && abs >= Number(state.task_ends_at_abs)) {
-    const completed = completeAidaTask(state, weather, worldTime);
+    const completed = completeAidaTask(state, weather, worldTime, abs);
     state = completed.state;
     thought = completed.thought;
   }
@@ -250,12 +257,20 @@ async function updateAidaRoutine(worldTime, context = {}) {
   }
 
   if (state.current_action === 'idle') {
-    // Priority: Critical risk -> Planner step -> Create plan -> Life Brain -> Goal task -> Routine
+    // Priority: Critical risk -> urgent need/goal/settle -> Planner step -> Create plan -> Life Brain -> Routine
     const critical = risk.risks?.find(item => item.task && item.severity >= 88);
+    const urgent = risk.risks?.find(item => item.task && item.severity >= 58);
+    const goalTask = chooseAidaGoalTask(state, minute);
     let task = null;
     
     if (critical) {
       task = { ...critical.task, risk_id: critical.id, source: 'risk' };
+    }
+
+    if (!task) {
+      task = (urgent ? { ...urgent.task, risk_id: urgent.id, source: urgent.task.source || 'need' } : null)
+        || goalTask
+        || makeSettleTask('aida', state, abs, worldTime);
     }
 
     if (!task) {
@@ -279,7 +294,9 @@ async function updateAidaRoutine(worldTime, context = {}) {
       }
 
       const lastPlannerCall = Number(state.last_aida_planner_call_abs || 0);
-      const shouldCallPlanner = !task && (!currentPlan || currentPlan.status !== 'active' || (abs - lastPlannerCall >= 20));
+      const shouldCallPlanner = !task
+        && (!currentPlan || currentPlan.status !== 'active' || (abs - lastPlannerCall >= 20))
+        && canCallPlanner(state, abs, worldTime);
 
       if (shouldCallPlanner) {
         const goals = getGoals('aida');
@@ -309,7 +326,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
         }
       }
 
-      if (!task) {
+      if (!task && canCallLifeBrain(state, abs, worldTime)) {
         try {
           const goals = getGoals('aida');
           const memories = getAidaMemories(5);
@@ -325,6 +342,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
             goal_id: lifeDecision.goal,
             thought_override: lifeDecision.thought
           };
+          state = rememberLifeBrainCall(state, 'aida', abs);
           console.log(`[LifeBrain:Aida] chose ${lifeDecision.action} at ${lifeDecision.location}`);
         } catch (lbErr) {
           console.error('[LifeBrain:Aida] failed:', lbErr.message);
@@ -332,10 +350,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
       }
 
       if (!task) {
-        // Fallback: goal task or routine
-        const goalTask = chooseAidaGoalTask(state, minute);
-        const urgent = risk.risks?.find(item => item.task && item.severity >= 58);
-        task = goalTask || (urgent ? { ...urgent.task, risk_id: urgent.id, source: urgent.task.source || 'need' } : null) || { ...routineStep(minute), source: 'routine' };
+        task = makeSettleTask('aida', state, abs, worldTime) || { ...routineStep(minute), source: 'routine' };
       }
     }
 
