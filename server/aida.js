@@ -20,6 +20,7 @@ const {
 } = require('./database');
 const { createPlan, getNextPlanStep, markPlanStepDone, invalidatePlan } = require('./agent-planner');
 const { decideNextAction } = require('./life-brain');
+const { buildTaskThought, buildCompletionThought, buildSocialDialogue } = require('./thought-phrases');
 const {
   canCallPlanner,
   canCallLifeBrain,
@@ -198,7 +199,7 @@ function completeAidaTask(state, weather, worldTime, absMinute) {
       task_started_at_abs: null,
       task_ends_at_abs: null
     }, `Aida finished ${label}.`, worldTime), absMinute, label, state.active_task_source),
-    thought
+    thought: buildCompletionThought('aida', label, result.outcome.success, worldTime, state.day)
   };
 }
 
@@ -359,9 +360,7 @@ async function updateAidaRoutine(worldTime, context = {}) {
       const isNewTask = state.last_aida_task_key !== key || task.source !== 'routine';
       if (isNewTask) {
         state = startAidaTask({ ...state, last_aida_task_key: key }, task, abs, worldTime);
-        thought = thought || task.thought_override || (task.action === 'shared_path_garden'
-          ? 'امروز کنار مسیر خاکی با آرش کمی کار مشترک می‌کنم.'
-          : `${task.label || task.action} را شروع می‌کنم.`);
+        thought = thought || task.thought_override || buildTaskThought('aida', { ...task, world_time: worldTime, day }, worldTime, day);
         addAidaMemory(`Aida started ${task.label || task.action} at ${worldTime}.${task.reason ? ` Reason: ${task.reason}.` : ''}`, {
           type: task.action === 'shared_path_garden' ? 'social' : 'life',
           importance: task.source === 'risk' ? 8 : 5
@@ -393,35 +392,7 @@ function buildAidaVisibleFeedback(state, risk, thought) {
 }
 
 function buildAidaSocialDialogue(arashState = getState(), aidaState = getAidaState(), worldTime = arashState.world_time || '06:00') {
-  const minute = parseMinutes(worldTime);
-  const arashAction = arashState.active_task_label || arashState.current_action || 'کارهای مزرعه';
-  const aidaAction = aidaState.active_task_label || aidaState.current_action || 'کارهای خانه';
-  const sharedWork = aidaState.current_action === 'shared_path_garden' || (minute >= 17 * 60 && minute < 18 * 60 + 30);
-  const morningWindow = minute >= 7 * 60 && minute < 9 * 60;
-  const nightWindow = minute >= 22 * 60 || minute < 6 * 60;
-
-  if (nightWindow) {
-    return [
-      { speaker: 'arash', text: 'شب شده؛ باید انرژی‌ام را برای فردا نگه دارم.' },
-      { speaker: 'aida', text: 'من هم در خانه‌ام آرام می‌خوابم؛ فردا باغچه کار دارد.' }
-    ];
-  }
-  if (sharedWork) {
-    return [
-      { speaker: 'arash', text: 'این مسیر بین خانه‌ها اگر مرتب بماند، رفت‌وآمدمان راحت‌تر می‌شود.' },
-      { speaker: 'aida', text: 'درست می‌گویی؛ من کنار راه چند بوته هم می‌کارم تا اینجا زنده‌تر شود.' }
-    ];
-  }
-  if (morningWindow) {
-    return [
-      { speaker: 'arash', text: `صبح را با ${arashAction} شروع کرده‌ام.` },
-      { speaker: 'aida', text: 'من هم به باغچه‌ام سر می‌زنم؛ گیاه‌ها صبح را دوست دارند.' }
-    ];
-  }
-  return [
-    { speaker: 'arash', text: `فعلا مشغول ${arashAction} هستم.` },
-    { speaker: 'aida', text: `من هم ${aidaAction} را انجام می‌دهم.` }
-  ];
+  return buildSocialDialogue(arashState, aidaState, worldTime);
 }
 
 function extractJSON(text) {
@@ -494,3 +465,4 @@ async function processAidaMessage(message) {
 }
 
 module.exports = { updateAidaRoutine, processAidaMessage, buildAidaSocialDialogue, AIDA_LOCATIONS };
+
