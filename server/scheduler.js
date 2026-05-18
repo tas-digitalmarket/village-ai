@@ -22,6 +22,7 @@ const {
   makeSettleTask,
   rememberLifeBrainCall
 } = require('./decision-tempo');
+const { buildTaskThought, buildCompletionThought } = require('./thought-phrases');
 
 const WORLD_MINUTE_REAL_MS = 2000;
 const DEFAULT_TASK_DURATION_MINUTES = 30;
@@ -45,6 +46,22 @@ const ROUTINE_MILESTONES = [
   { time: '19:30', label: 'Evening Rest', action: 'sitting', location: 'bed', duration: 50, source: 'routine' },
   { time: '21:00', label: 'Evening Stroll', action: 'wandering', location: 'path_center', duration: 35, source: 'routine' },
   { time: '22:00', label: 'Sleep', action: 'sleeping', location: 'bed', duration: 480, source: 'routine' }
+];
+
+const AIDA_ROUTINE_MILESTONES = [
+  { time: '06:00', label: 'Breakfast at Home', action: 'eating', source: 'routine' },
+  { time: '07:00', label: 'Morning Garden Care', action: 'morning_garden', source: 'routine' },
+  { time: '09:00', label: 'Sort Herbs', action: 'checking_herbs', source: 'routine' },
+  { time: '10:30', label: 'Village Errand', action: 'village_errand', source: 'routine' },
+  { time: '12:00', label: 'Lunch at Home', action: 'eating', source: 'routine' },
+  { time: '13:00', label: 'Quiet Rest', action: 'resting', source: 'routine' },
+  { time: '14:00', label: 'Tend Small Animals', action: 'animal_care', source: 'routine' },
+  { time: '16:00', label: 'Water Garden', action: 'watering_garden', source: 'routine' },
+  { time: '17:00', label: 'Shared Path Garden Work', action: 'shared_path_garden', source: 'social' },
+  { time: '18:30', label: 'Simple Dinner', action: 'eating', source: 'routine' },
+  { time: '19:30', label: 'Evening Prayer', action: 'evening_prayer', source: 'routine' },
+  { time: '21:00', label: 'Herb Notes', action: 'checking_herbs', source: 'routine' },
+  { time: '22:00', label: 'Sleep', action: 'sleeping', source: 'routine' }
 ];
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
@@ -143,6 +160,13 @@ function buildUpcomingSchedule(directives, worldTime) {
   schedule.sort((a, b) => a.time.localeCompare(b.time));
   const currentMinutes = parseMinutes(worldTime || '00:00');
   return schedule.filter(s => parseMinutes(s.time) >= currentMinutes).slice(0, 10);
+}
+
+function buildAidaUpcomingSchedule(worldTime) {
+  const currentMinutes = parseMinutes(worldTime || '00:00');
+  return AIDA_ROUTINE_MILESTONES
+    .filter(s => parseMinutes(s.time) >= currentMinutes)
+    .slice(0, 10);
 }
 
 function startTask(item, state, absMinute) {
@@ -247,11 +271,12 @@ function completeActiveTask(state, worldState, weather, worldTime, absMinute) {
   return {
     state: markCompletedTempo(idleState(nextState), absMinute, label, state.active_task_source),
     worldState: result.worldState,
-    thought
+    thought: buildCompletionThought('arash', label, result.outcome.success, worldTime, state.day)
   };
 }
 
 function taskThought(task) {
+  return buildTaskThought('arash', task, task.world_time, task.day);
   if (task.source === 'creator') return 'زمان دستور خالق رسیده؛ انجامش می دهم.';
   if (task.risk_id) return `الان باید مراقب ${task.label} باشم؛ ${task.reason || 'خطر دارد بالا می رود'}.`;
   if (task.source === 'goal') return `برای هدف امروز، ${task.label} را شروع می کنم.`;
@@ -402,7 +427,7 @@ async function runMinutePulse(broadcast) {
           firedKeys.add(taskKey(day, task));
         }
         nextState = startTask(task, nextState, abs);
-        thought = task.thought_override || taskThought(task);
+        thought = task.thought_override || taskThought({ ...task, world_time: worldTime, day });
         addMemory(`آرش در ساعت ${worldTime} کار ${task.label || task.action} را شروع کرد.${task.reason ? ` دلیل: ${task.reason}.` : ''}`);
         if (task.source === 'creator' && !task.recurring && task.id) removeDirective(task.id);
       }
@@ -417,6 +442,7 @@ async function runMinutePulse(broadcast) {
     aidaState = { ...aidaState, social_dialogue: buildAidaSocialDialogue(nextState, aidaState, worldTime) };
 
     const upcomingSchedule = buildUpcomingSchedule(getDirectives(), worldTime, weather);
+    const aidaUpcomingSchedule = buildAidaUpcomingSchedule(worldTime);
     const { OPENROUTER_API_KEY, SAMBANOVA_API_KEY } = require('./config');
     const hasAiKey = (OPENROUTER_API_KEY && OPENROUTER_API_KEY !== 'MISSING_KEY') || (SAMBANOVA_API_KEY && SAMBANOVA_API_KEY !== 'MISSING_KEY');
 
@@ -429,6 +455,7 @@ async function runMinutePulse(broadcast) {
         thought,
         memories: getMemories(5),
         upcomingSchedule,
+        aidaUpcomingSchedule,
         ida_state: aidaState,
         social_dialogue: aidaState.social_dialogue,
         active_plan: getPlan('arash'),
@@ -449,4 +476,5 @@ function startScheduler(broadcast) {
 }
 
 async function catchUpSimulation() { return getState(); }
-module.exports = { startScheduler, buildUpcomingSchedule, catchUpSimulation };
+module.exports = { startScheduler, buildUpcomingSchedule, buildAidaUpcomingSchedule, catchUpSimulation };
+
