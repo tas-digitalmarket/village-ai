@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=16" />
+  <link rel="stylesheet" href="style.css?v=17" />
   <link rel="stylesheet" href="world-state.css?v=3" />
   <link rel="stylesheet" href="dashboard-tabs.css?v=3" />
   <style>.character-panel.is-hidden{display:none!important}.aida-life-block{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}</style>
@@ -17,13 +17,13 @@
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "./hud.js?v=7": "./hud.js?v=16",
-      "./hud.js?v=8": "./hud.js?v=16",
-      "./hud.js?v=9": "./hud.js?v=16",
-      "./hud.js?v=10": "./hud.js?v=16",
-      "./hud.js?v=11": "./hud.js?v=16",
-      "./hud.js?v=12": "./hud.js?v=16",
-      "./hud.js?v=13": "./hud.js?v=16",
+      "./hud.js?v=7": "./hud.js?v=17",
+      "./hud.js?v=8": "./hud.js?v=17",
+      "./hud.js?v=9": "./hud.js?v=17",
+      "./hud.js?v=10": "./hud.js?v=17",
+      "./hud.js?v=11": "./hud.js?v=17",
+      "./hud.js?v=12": "./hud.js?v=17",
+      "./hud.js?v=13": "./hud.js?v=17",
       "./creator.js?v=8": "./creator.js?v=10",
       "./speech-bubbles.js?v=1": "./speech-bubbles.js?v=4"
     }
@@ -74,6 +74,7 @@
         </div>
 
         <section class="dashboard-overview character-panel character-panel--arash" data-character-panel="arash">
+          <div class="dashboard-section-head"><span>Body & Mood</span><strong id="arash-life-pill">awake</strong></div>
           <div class="overview-grid overview-grid--compact">
             <div class="overview-stat"><span>Mood</span><strong id="stat-mood">content</strong></div>
           </div>
@@ -84,6 +85,7 @@
         </section>
 
         <section class="dashboard-overview character-panel character-panel--aida is-hidden" data-character-panel="aida">
+          <div class="dashboard-section-head"><span>Body & Mood</span><strong id="aida-life-pill">awake</strong></div>
           <div class="overview-grid overview-grid--compact">
             <div class="overview-stat"><span>Mood</span><strong id="aida-stat-mood">curious</strong></div>
           </div>
@@ -156,7 +158,7 @@
     <div class="creator-input-area"><textarea id="creator-input" placeholder="Speak with Arash..."></textarea><button id="creator-send">Send</button></div>
   </div>
 
-  <script type="module" src="main.js?v=22"></script>
+  <script type="module" src="main.js?v=23"></script>
   <script type="module" src="village-panel.js?v=6"></script>
   <script type="module" src="clock-smooth.js?v=2"></script>
 </body>
