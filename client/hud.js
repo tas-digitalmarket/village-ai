@@ -19,6 +19,19 @@ const ACTION_LABELS = {
 const WEATHER_ICONS = { sunny: '☀️', cloudy: '⛅', rainy: '🌧️', foggy: '🌫️', windy: '💨', stormy: '⛈️' };
 const MOOD_ICONS = { happy: '😄', content: '😊', tired: '😴', hungry: '😫', peaceful: '😌', worried: '😟', focused: '🧐', proud: '😎', curious: '🤔' };
 
+const SOURCE_META = {
+  risk: { title: 'Risk', meaning: 'danger or urgent consequence', className: 'risk' },
+  need: { title: 'Need', meaning: 'body or world need', className: 'need' },
+  routine: { title: 'Routine', meaning: 'daily rural rhythm', className: 'routine' },
+  goal: { title: 'Goal', meaning: 'daily goal', className: 'goal' },
+  planner: { title: 'Goal Plan', meaning: 'planned step', className: 'planner' },
+  life_brain: { title: 'Free Decision', meaning: 'AI choice from memory and context', className: 'life_brain' },
+  social: { title: 'Relationship', meaning: 'bond or shared life', className: 'social' },
+  creator: { title: 'Creator', meaning: 'your command', className: 'creator' },
+  tempo: { title: 'Natural Pause', meaning: 'rest after finishing work', className: 'tempo' },
+  steady: { title: 'Steady', meaning: 'no active driver', className: 'steady' }
+};
+
 function pct(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -41,6 +54,13 @@ function goalMarkup(goal) { const steps = goal.steps || []; const done = steps.f
 function skillMarkup(name, skill = {}) { return `<div class="skill-row"><span>${esc(name)}</span><strong>L${skill.level || 1}</strong><em>${skill.xp || 0} XP</em></div>`; }
 function eventMarkup(event = {}) { return `<article class="event-row"><strong>${esc(event.title || 'Event')}</strong><span>${esc(event.note || '')}</span></article>`; }
 function riskMarkup(risk = {}) { const top = risk.topRisk; if (!top) return '<div class="muted-empty">No active risk.</div>'; const tone = risk.mode === 'critical' || risk.mode === 'urgent' ? 'warn' : 'ready'; return `<div class="risk-card risk-card--${tone}"><strong>${esc(top.label || risk.mode)}</strong><span>${esc(top.reason || risk.summary || '')}</span>${createMeter('Severity', risk.overall || top.severity || 0, tone)}</div>`; }
+function sourceMeta(source) { return SOURCE_META[source || 'steady'] || { title: String(source || 'Steady'), meaning: 'custom driver', className: 'steady' }; }
+function lifePill(state = {}) {
+  if (state.current_action === 'sleeping') return 'sleeping';
+  if (state.active_task_source === 'tempo') return 'pausing';
+  if (state.active_task_source) return 'active';
+  return 'awake';
+}
 
 export class HUD {
   constructor() {
@@ -52,6 +72,7 @@ export class HUD {
     this.$energyVal = document.getElementById('energy-val');
     this.$hungerBar = document.getElementById('hunger-bar');
     this.$hungerVal = document.getElementById('hunger-val');
+    this.$arashLifePill = document.getElementById('arash-life-pill');
     this.$taskIcon = document.getElementById('task-icon');
     this.$taskLabel = document.getElementById('task-label');
     this.$taskContext = document.getElementById('task-context');
@@ -63,6 +84,7 @@ export class HUD {
     this.$aidaEnergyVal = document.getElementById('aida-energy-val');
     this.$aidaHungerBar = document.getElementById('aida-hunger-bar');
     this.$aidaHungerVal = document.getElementById('aida-hunger-val');
+    this.$aidaLifePill = document.getElementById('aida-life-pill');
     this.$aidaTaskIcon = document.getElementById('aida-task-icon');
     this.$aidaTaskLabel = document.getElementById('aida-task-label');
     this.$aidaTaskContext = document.getElementById('aida-task-context');
@@ -75,12 +97,16 @@ export class HUD {
     this.$arashPlanStep       = document.getElementById('arash-plan-step');
     this.$arashTaskReason     = document.getElementById('arash-task-reason');
     this.$arashEmotion        = document.getElementById('arash-emotion');
+    this.$arashRiskLink       = this.$arashEmotion;
+    this.$arashTaskPlace      = this.ensureTraceRow('arash-planner-strip', 'arash-task-place');
     // Aida planner strip
     this.$aidaDecisionSource  = document.getElementById('aida-decision-source');
     this.$aidaActiveGoalEl    = document.getElementById('aida-active-goal');
     this.$aidaPlanStep        = document.getElementById('aida-plan-step');
     this.$aidaTaskReasonEl    = document.getElementById('aida-task-reason');
     this.$aidaEmotionEl       = document.getElementById('aida-emotion');
+    this.$aidaRiskLink        = this.$aidaEmotionEl;
+    this.$aidaTaskPlace       = this.ensureTraceRow('aida-planner-strip', 'aida-task-place');
     this.$aidaGoals = document.getElementById('aida-daily-goals-list');
     this.$aidaRiskPill = document.getElementById('aida-risk-pill');
     this.$aidaRiskDetail = document.getElementById('aida-risk-detail');
@@ -115,6 +141,60 @@ export class HUD {
     this.initDashboardToggle();
     this.initIntentToggle();
     this.initCharacterTabs();
+    document.querySelector('#intent-panel .intent-head span')?.replaceChildren('Decision Trace');
+    document.querySelector('#aida-intent-panel .intent-head span')?.replaceChildren('Decision Trace');
+    this.renameTraceLabels('arash-planner-strip');
+    this.renameTraceLabels('aida-planner-strip');
+  }
+
+  renameTraceLabels(stripId) {
+    const labels = [...(document.getElementById(stripId)?.querySelectorAll('.planner-label') || [])];
+    ['Origin', 'Goal', 'Action', 'Reason', 'Risk', 'Place'].forEach((text, index) => {
+      if (labels[index]) labels[index].textContent = text;
+    });
+  }
+
+  ensureTraceRow(stripId, valueId) {
+    const strip = document.getElementById(stripId);
+    if (!strip) return null;
+    const existing = document.getElementById(valueId);
+    if (existing) return existing;
+    const row = document.createElement('div');
+    row.className = 'planner-row';
+    const label = document.createElement('span');
+    label.className = 'planner-label';
+    label.textContent = 'Place';
+    const value = document.createElement('span');
+    value.id = valueId;
+    value.className = 'planner-value';
+    value.textContent = '—';
+    row.append(label, value);
+    strip.append(row);
+    return value;
+  }
+
+  setSourceChip(el, source) {
+    if (!el) return;
+    const meta = sourceMeta(source);
+    el.textContent = meta.title;
+    el.className = `source-chip source-chip--${meta.className}`;
+    el.title = meta.meaning;
+  }
+
+  setDecisionTrace(refs, state = {}) {
+    const source = state.active_task_source || 'steady';
+    const meta = sourceMeta(source);
+    const risk = state.active_risk_id || state.risk_state?.topRisk?.label || null;
+    const place = state.active_task_location || state.location || 'home';
+    if (refs.source) {
+      refs.source.textContent = `${meta.title} - ${meta.meaning}`;
+      refs.source.className = `planner-value planner-value--source-${meta.className}`;
+    }
+    if (refs.goal) refs.goal.textContent = state.active_goal_title || state.active_goal_id || '—';
+    if (refs.step) refs.step.textContent = state.active_task_label || state.current_action || '—';
+    if (refs.reason) refs.reason.textContent = state.active_task_reason || state.thought || '—';
+    if (refs.risk) refs.risk.textContent = risk || '—';
+    if (refs.place) refs.place.textContent = place || '—';
   }
 
   initDashboardToggle() {
@@ -174,6 +254,7 @@ export class HUD {
     if (this.$energyVal) this.$energyVal.textContent = `${energy}%`;
     if (this.$hungerBar) { this.$hungerBar.style.width = `${hunger}%`; this.$hungerBar.style.background = hunger < 50 ? '#31d27c' : hunger < 75 ? '#f1c84b' : '#ef6a6a'; }
     if (this.$hungerVal) this.$hungerVal.textContent = `${hunger}%`;
+    if (this.$arashLifePill) this.$arashLifePill.textContent = lifePill(data);
     if (this.$weather && data.weather) this.$weather.textContent = `${WEATHER_ICONS[data.weather] || '🌤️'} ${data.weather}`;
     if (this.$mood && data.mood) this.$mood.textContent = `${MOOD_ICONS[data.mood] || '😊'} ${data.mood}`;
 
@@ -181,19 +262,19 @@ export class HUD {
     const label = data.active_task_label || ACTION_LABELS[data.current_action] || data.current_action || 'Idle';
     if (this.$taskIcon) this.$taskIcon.textContent = icon;
     if (this.$taskLabel) this.$taskLabel.textContent = label;
-    if (this.$taskSource) this.$taskSource.textContent = data.active_task_source || 'steady';
-    if (this.$taskContext) { const parts = [data.active_goal_title, data.active_task_reason, data.active_risk_id ? `risk: ${data.active_risk_id}` : null].filter(Boolean); this.$taskContext.textContent = parts.join(' | ') || 'Waiting for the next meaningful action.'; }
+    this.setSourceChip(this.$taskSource, data.active_task_source || 'steady');
+    if (this.$taskContext) { const meta = sourceMeta(data.active_task_source || 'steady'); const parts = [meta.meaning, data.active_goal_title, data.active_task_reason, data.active_risk_id ? `risk: ${data.active_risk_id}` : null].filter(Boolean); this.$taskContext.textContent = parts.join(' | ') || 'Waiting for the next meaningful action.'; }
     if (this.$thoughtText) this.$thoughtText.textContent = data.thought || 'Arash is observing the world.';
     if (this.$thought) this.$thought.classList.toggle('is-live', Boolean(data.thought));
 
-    // Arash planner strip
-    const srcRaw = data.active_task_source || 'routine';
-    const srcLabel = { planner: '🧠 Planner', life_brain: '💡 Life Brain', creator: '✨ Creator', need: '⚠️ Need', routine: '📅 Routine', goal: '🎯 Goal' }[srcRaw] || srcRaw;
-    if (this.$arashDecisionSource) { this.$arashDecisionSource.textContent = srcLabel; this.$arashDecisionSource.className = `planner-value planner-value--source-${srcRaw}`; }
-    if (this.$arashActiveGoal)     this.$arashActiveGoal.textContent     = data.active_goal_title || data.active_goal_id || '—';
-    if (this.$arashPlanStep)       this.$arashPlanStep.textContent       = data.active_task_label || data.current_action || '—';
-    if (this.$arashTaskReason)     this.$arashTaskReason.textContent     = data.active_task_reason || '—';
-    if (this.$arashEmotion)        this.$arashEmotion.textContent        = data.mood || '—';
+    this.setDecisionTrace({
+      source: this.$arashDecisionSource,
+      goal: this.$arashActiveGoal,
+      step: this.$arashPlanStep,
+      reason: this.$arashTaskReason,
+      risk: this.$arashRiskLink,
+      place: this.$arashTaskPlace
+    }, data);
 
     this.updateAida(data.ida_state);
     this.updateRelationshipConsole(data, data.ida_state);
@@ -235,6 +316,7 @@ export class HUD {
     if (this.$aidaEnergyVal) this.$aidaEnergyVal.textContent = `${energy}%`;
     if (this.$aidaHungerBar) { this.$aidaHungerBar.style.width = `${hunger}%`; this.$aidaHungerBar.style.background = hunger < 50 ? '#31d27c' : hunger < 75 ? '#f1c84b' : '#ef6a6a'; }
     if (this.$aidaHungerVal) this.$aidaHungerVal.textContent = `${hunger}%`;
+    if (this.$aidaLifePill) this.$aidaLifePill.textContent = lifePill(aida);
     if (this.$aidaMood && aida.mood) this.$aidaMood.textContent = `${MOOD_ICONS[aida.mood] || '😊'} ${aida.mood}`;
 
     const action = aida.current_action || 'idle';
@@ -242,22 +324,23 @@ export class HUD {
     const label = aida.active_task_label || ACTION_LABELS[action] || action || 'Settling in';
     if (this.$aidaTaskIcon) this.$aidaTaskIcon.textContent = icon;
     if (this.$aidaTaskLabel) this.$aidaTaskLabel.textContent = label;
-    if (this.$aidaTaskSource) this.$aidaTaskSource.textContent = aida.active_task_source || 'steady';
+    this.setSourceChip(this.$aidaTaskSource, aida.active_task_source || 'steady');
     if (this.$aidaTaskContext) {
-      const parts = [aida.active_goal_title, aida.active_task_reason, aida.active_risk_id ? `risk: ${aida.active_risk_id}` : null].filter(Boolean);
+      const meta = sourceMeta(aida.active_task_source || 'steady');
+      const parts = [meta.meaning, aida.active_goal_title, aida.active_task_reason, aida.active_risk_id ? `risk: ${aida.active_risk_id}` : null].filter(Boolean);
       this.$aidaTaskContext.textContent = parts.join(' | ') || 'Aida is observing her homestead.';
     }
     if (this.$aidaThoughtText) this.$aidaThoughtText.textContent = aida.thought || 'Aida is reading the needs of her home.';
     if (this.$aidaThought) this.$aidaThought.classList.toggle('is-live', Boolean(aida.thought));
 
-    // Aida planner strip
-    const aidaSrcRaw = aida.active_task_source || 'routine';
-    const aidaSrcLabel = { planner: '🧠 Planner', life_brain: '💡 Life Brain', creator: '✨ Creator', need: '⚠️ Need', routine: '📅 Routine', goal: '🎯 Goal' }[aidaSrcRaw] || aidaSrcRaw;
-    if (this.$aidaDecisionSource) { this.$aidaDecisionSource.textContent = aidaSrcLabel; this.$aidaDecisionSource.className = `planner-value planner-value--source-${aidaSrcRaw}`; }
-    if (this.$aidaActiveGoalEl)   this.$aidaActiveGoalEl.textContent   = aida.active_goal_title || aida.active_goal_id || '—';
-    if (this.$aidaPlanStep)       this.$aidaPlanStep.textContent       = aida.active_task_label || aida.current_action || '—';
-    if (this.$aidaTaskReasonEl)   this.$aidaTaskReasonEl.textContent   = aida.active_task_reason || '—';
-    if (this.$aidaEmotionEl)      this.$aidaEmotionEl.textContent      = aida.mood || '—';
+    this.setDecisionTrace({
+      source: this.$aidaDecisionSource,
+      goal: this.$aidaActiveGoalEl,
+      step: this.$aidaPlanStep,
+      reason: this.$aidaTaskReasonEl,
+      risk: this.$aidaRiskLink,
+      place: this.$aidaTaskPlace
+    }, aida);
 
     const goals = aida.daily_plan?.goals || [];
     setHtml(this.$aidaGoals, goals.length ? goals.slice(0, 5).map(goalMarkup).join('') : '<div class="muted-empty">Daily goals will appear here.</div>');
