@@ -10,9 +10,9 @@ import { buildWorldExpansion } from './world-expansion.js?v=2';
 import { buildAidaHomeInterior } from './aida-home-interior.js?v=1';
 import { Villager } from './character.js?v=7';
 import { AidaCharacter } from './ida-character.js?v=1';
-import { CharacterSpeechBubbles, formatCharacterBubble, sanitizeBubbleText } from './speech-bubbles.js?v=2';
+import { CharacterSpeechBubbles, formatCharacterBubble, sanitizeBubbleText } from './speech-bubbles.js?v=5';
 import { WeatherFX } from './weather-fx.js?v=7';
-import { HUD } from './hud.js?v=7';
+import { HUD } from './hud.js?v=18';
 import { CreatorPanel } from './creator.js?v=8';
 
 const canvas = document.getElementById('world-canvas');
@@ -292,6 +292,9 @@ function applyState(d) {
   if (d.upcomingSchedule) {
     hud.updateSchedule(d.upcomingSchedule);
   }
+  if (d.aidaUpcomingSchedule) {
+    hud.updateAidaSchedule(d.aidaUpcomingSchedule);
+  }
 
   const ls = document.getElementById('loading-screen');
   if (ls && !ls.classList.contains('hidden')) {
@@ -455,3 +458,4 @@ function animate() {
   composer.render();
 }
 animate();
+
