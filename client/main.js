@@ -292,7 +292,7 @@ function applyState(d) {
   if (d.upcomingSchedule) {
     hud.updateSchedule(d.upcomingSchedule);
   }
-  if (d.aidaUpcomingSchedule) {
+  if (d.aidaUpcomingSchedule && typeof hud.updateAidaSchedule === 'function') {
     hud.updateAidaSchedule(d.aidaUpcomingSchedule);
   }
 
